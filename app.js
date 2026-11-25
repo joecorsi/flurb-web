@@ -225,28 +225,31 @@
     localStorage.setItem("flurb.dropbox.libraryFolder", JSON.stringify(state.libraryFolder));
     state.folderPicker = false;
     updateConnection();
-    await loadLibraryFolder();
+    await loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name);
   }
   function isInsideLibrary(track) {
     const root = state.libraryFolder?.path_lower;
-    return Boolean(root && track.path_lower && track.path_lower.startsWith(`${root}/`));
+    return Boolean(root && track.path_lower && (track.path_lower === root || track.path_lower.startsWith(`${root}/`)));
   }
-  async function loadLibraryFolder() {
+  async function loadLibraryFolder(path, name) {
     if (!state.libraryFolder?.id || !state.libraryFolder?.path_lower) return openFolderPicker();
+    const root = state.libraryFolder.path_lower;
+    path = path || root;
+    if (!(path === root || path.startsWith(`${root}/`))) throw new Error("That folder is outside the selected Flurb library.");
     state.folderPicker = false;
-    state.folderPath = state.libraryFolder.path_lower;
-    state.folderName = state.libraryFolder.name;
+    state.folderPath = path;
+    state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
     showNotice(`Loading ${state.folderName}…`);
     els.refresh.classList.add("is-spinning");
     try {
-      // The selected folder ID is the only root used for library listings. Recursive listing stays inside it.
-      const entries = await listFolder(state.libraryFolder.id, true);
-      state.entries = entries.filter((entry) => isAudio(entry) && isInsideLibrary(entry));
-      state.tracks = state.entries.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+      // Browse one level at a time. Every request is checked against the one selected library root.
+      const entries = await listFolder(path, false);
+      state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
+      state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       renderBreadcrumbs();
       renderTracks();
       hideNotice();
-      if (!state.tracks.length) showNotice("No playable tracks found in this folder or its subfolders.");
+      if (!state.tracks.length && !state.entries.some(isFolder)) showNotice("No playable tracks found in this folder.");
     } catch (error) {
       const message = friendlyError(error);
       if (/no longer available/i.test(message)) {
@@ -262,10 +265,36 @@
   }
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
-    const label = document.createElement("span");
-    label.className = "crumb current";
-    label.textContent = state.folderPicker ? "Choose one Dropbox folder" : state.folderName;
-    els.breadcrumbs.append(label);
+    if (state.folderPicker) {
+      const label = document.createElement("span");
+      label.className = "crumb current";
+      label.textContent = "Choose one Dropbox folder";
+      els.breadcrumbs.append(label);
+      return;
+    }
+    const rootPath = state.libraryFolder?.path_lower || "";
+    const root = document.createElement("button");
+    root.type = "button";
+    root.className = `crumb${state.folderPath === rootPath ? " current" : ""}`;
+    root.textContent = state.libraryFolder?.name || state.folderName;
+    root.addEventListener("click", () => loadLibraryFolder(rootPath, state.libraryFolder.name).catch((e) => showNotice(friendlyError(e), "error")));
+    els.breadcrumbs.append(root);
+    const relative = state.folderPath.slice(rootPath.length).split("/").filter(Boolean);
+    let path = rootPath;
+    relative.forEach((part, index) => {
+      const separator = document.createElement("span");
+      separator.className = "crumb-separator";
+      separator.textContent = "/";
+      els.breadcrumbs.append(separator);
+      path += `/${part}`;
+      const folderPath = path;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `crumb${index === relative.length - 1 ? " current" : ""}`;
+      button.textContent = part;
+      button.addEventListener("click", () => loadLibraryFolder(folderPath, part).catch((e) => showNotice(friendlyError(e), "error")));
+      els.breadcrumbs.append(button);
+    });
   }
   function filteredTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
@@ -275,13 +304,15 @@
     els.trackList.replaceChildren();
     const query = els.search.value.trim().toLocaleLowerCase();
     const tracks = filteredTracks();
+    const folders = state.entries.filter(isFolder).filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
     els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"}`;
-    if (!tracks.length) {
+    if (!tracks.length && !folders.length) {
       els.trackList.append(els.emptyState);
       els.emptyState.querySelector("p").textContent = query ? "No tracks found." : "No music in this folder yet.";
       els.emptyState.querySelector("span").textContent = query ? "Try another search." : "Use Change folder to pick another Dropbox folder.";
       return;
     }
+    folders.forEach((folder) => els.trackList.append(makeFolderRow(folder)));
     tracks.forEach((track, index) => els.trackList.append(makeTrackRow(track, index)));
   }
   function renderFolderPicker() {
@@ -294,7 +325,7 @@
     const row = document.createElement("button");
     row.type = "button";
     row.className = "track-row folder-row";
-    row.setAttribute("aria-label", `Open folder ${folder.name}`);
+    row.setAttribute("aria-label", state.folderPicker ? `Use folder ${folder.name} as the library` : `Open subfolder ${folder.name}`);
     const leading = document.createElement("span");
     leading.className = "track-leading";
     leading.innerHTML = '<svg class="folder-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h5l2 2h8A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
@@ -309,9 +340,12 @@
     copy.append(title, meta);
     const chevron = document.createElement("span");
     chevron.className = "track-duration";
-    chevron.textContent = "USE  ›";
+    chevron.textContent = state.folderPicker ? "USE  ›" : "OPEN  ›";
     row.append(leading, copy, chevron);
-    row.addEventListener("click", () => selectLibraryFolder(folder).catch((e) => showNotice(friendlyError(e), "error")));
+    row.addEventListener("click", () => {
+      if (state.folderPicker) selectLibraryFolder(folder).catch((e) => showNotice(friendlyError(e), "error"));
+      else loadLibraryFolder(folder.path_lower, folder.name).catch((e) => showNotice(friendlyError(e), "error"));
+    });
     return row;
   }
   function makeTrackRow(track, index) {
@@ -456,7 +490,7 @@
   els.search.addEventListener("input", renderTracks);
   els.refresh.addEventListener("click", () => {
     if (state.folderPicker) openFolderPicker();
-    else loadLibraryFolder().catch((e) => showNotice(friendlyError(e), "error"));
+    else loadLibraryFolder(state.folderPath, state.folderName).catch((e) => showNotice(friendlyError(e), "error"));
   });
   els.changeFolder.addEventListener("click", () => openFolderPicker());
   els.play.addEventListener("click", () => {
