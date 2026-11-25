@@ -687,3 +687,5 @@ html, body, .app-shell, main, .library { width: 100%; max-width: none; }
 .settings-folder:hover { border-color: #1680ff; background: #182535; }
 .settings-status { min-height: 1.2rem; margin: .8rem 0 0; color: #a0a1a4; font-size: .82rem; }
 .settings-status.is-error { color: #f1a091; }
+html, body { touch-action: pan-x pan-y; }
+.search-box input { font-size: 16px; }
