@@ -6,31 +6,12 @@
   <meta name="theme-color" content="#171717">
   <meta name="description" content="A simple music player for tracks in your Dropbox.">
   <title>Flurb — music from your Dropbox</title>
-  <link rel="stylesheet" href="./styles.css?v=default-window-1">
-  <script src="./app.js?v=default-window-1" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-2">
+  <script src="./app.js?v=mobile-player-2" defer></script>
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <a class="wordmark" href="#top" aria-label="Flurb home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>flurb</span></a>
-      <div class="topbar-right">
-        <span class="connection-state" id="connection-state"><span class="state-dot"></span><span id="connection-label">Not connected</span></span>
-        <button class="connect-button" id="connect-button" type="button">Connect Dropbox</button>
-      </div>
-    </header>
-
     <main id="top">
-      <section class="setup-card" id="setup-card" aria-labelledby="setup-heading" hidden>
-        <div class="setup-content">
-          <h2 class="sr-only" id="setup-heading">Dropbox connection</h2>
-          <div class="setup-form">
-            <label class="sr-only" for="app-key">Dropbox app key</label>
-            <input id="app-key" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Dropbox app key" aria-describedby="app-key-help">
-            <button class="primary-button" id="setup-connect" type="button">Connect Dropbox <span aria-hidden="true">↗</span></button>
-          </div>
-        </div>
-      </section>
-
       <section class="library" aria-labelledby="library-heading">
         <div class="library-sticky" id="library-sticky">
           <div class="quick-actions" role="group" aria-label="Library views">
@@ -43,10 +24,7 @@
           </div>
           <div class="search-row">
             <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="Search" aria-label="Search tracks and artists" disabled></label>
-            <button class="icon-button refresh-button" id="refresh-button" type="button" aria-label="Refresh folder" title="Refresh folder" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.7 9a7 7 0 0 1 11.8-2L20 12M4 12l2.5 5a7 7 0 0 0 11.8-2"/></svg></button>
-            <button class="change-folder-button" id="change-folder-button" type="button" disabled>Folder</button>
           </div>
-          <nav class="breadcrumbs" id="breadcrumbs" aria-label="Selected Dropbox folder"><span class="muted">Library</span></nav>
         </div>
         <h2 class="sr-only" id="library-heading">Music library</h2>
         <span class="track-count sr-only" id="track-count"></span>
@@ -60,8 +38,8 @@
 
     <footer class="player" id="player" aria-label="Audio player">
       <div class="player-track">
-        <div class="cover-tile" id="cover-tile" aria-hidden="true"><span class="cover-orbit orbit-one"></span><span class="cover-orbit orbit-two"></span><span class="cover-center"></span></div>
-        <div class="now-playing"><span class="now-label">NOW PLAYING</span><strong id="now-title">Nothing playing yet</strong><span id="now-album"></span></div>
+        <span class="player-waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <div class="now-playing"><strong id="now-title">Nothing playing yet</strong><span id="now-album"></span></div>
         <button class="icon-button favorite-button" id="now-favorite" type="button" aria-label="Favorite current track" title="Favorite current track" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg></button>
       </div>
       <div class="player-controls">
@@ -74,7 +52,6 @@
         </div>
         <div class="scrubber-row"><span class="time-label" id="elapsed-time">0:00</span><input id="progress" class="range-input" type="range" min="0" max="100" value="0" aria-label="Track position" disabled><span class="time-label" id="duration-time">0:00</span></div>
       </div>
-      <div class="player-volume"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4ZM17 9a5 5 0 0 1 0 6M19 6a9 9 0 0 1 0 12"/></svg><input id="volume" class="range-input" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume"></div>
     </footer>
     <audio id="audio" preload="metadata"></audio>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
