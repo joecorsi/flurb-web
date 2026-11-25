@@ -54,23 +54,26 @@
     return text;
   }
   async function dropbox(path, body = {}) {
-    const args = new URLSearchParams({
-      authorization: `Bearer ${state.token}`,
-      arg: JSON.stringify(body),
-      reject_cors_preflight: "true"
-    });
-    const response = await fetch(`${API}${path}?${args.toString()}`, {
+    const response = await fetch(`${API}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "text/plain; charset=dropbox-cors-hack" }
+      headers: {
+        Authorization: `Bearer ${state.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
     });
-    const payload = await response.json().catch(() => ({}));
+    const raw = await response.text();
+    let payload = {};
+    try { payload = raw ? JSON.parse(raw) : {}; } catch (_) {}
     if (!response.ok) {
       if (response.status === 401) {
         state.token = "";
         sessionStorage.removeItem("flurb.dropbox.accessToken");
         updateConnection();
       }
-      throw new Error(payload.error_summary || payload.error?.[".tag"] || `Dropbox request failed (${response.status}).`);
+      const requestId = response.headers.get("x-dropbox-request-id");
+      const detail = payload.error_summary || payload.error?.[".tag"] || raw || `Dropbox request failed (${response.status}).`;
+      throw new Error(requestId ? `${detail} (request ${requestId})` : detail);
     }
     return payload;
   }
