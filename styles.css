@@ -220,3 +220,76 @@ code { color: var(--lime); font: .9em var(--mono); }
   .transport { grid-row: 2; justify-content: center; }
   .player { padding-top: .55rem; }
 }
+
+/* Quiet charcoal surfaces from vaseweld, with Orbitofu's paper-simple type and blue accent. */
+:root {
+  color-scheme: dark;
+  --bg: #171717;
+  --panel: #202020;
+  --panel-hi: #252525;
+  --line: #343434;
+  --text: #f3f3f3;
+  --muted: #a3a3a3;
+  --dim: #777;
+  --lime: #79aaff;
+  --lime-dark: #5d8ee0;
+  --orange: #ef977f;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --display: Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg);
+}
+body { background: var(--bg); }
+.topbar { border-color: #ffffff12; }
+.wordmark { font-family: var(--sans); letter-spacing: -.045em; }
+.brand-mark i { transform: none; border-radius: 1px; }
+.connect-button, .primary-button { color: #fff; background: #1769e8; }
+.connect-button:hover, .primary-button:hover { background: #2f7cf2; }
+h1 { font-family: var(--display); font-weight: 500; letter-spacing: -.055em; }
+h1 em { color: #9dbfff; font-weight: 400; font-style: italic; }
+.intro-copy { color: #b3b3b3; }
+.setup-card { border-color: #343434; border-radius: .7rem; background: #202020; box-shadow: none; }
+.setup-icon { border-color: #3a3a3a; border-radius: .4rem; color: #9dbfff; }
+.setup-step, .setup-foot { color: #898989; }
+.text-button, code { color: #9dbfff; }
+.setup-form input { border-color: #414141; border-radius: .35rem; background: #171717; }
+.help-panel { border: 1px solid #303030; border-radius: .45rem; background: #191919; }
+.library-eyebrow { color: #9b9b9b; }
+.library-heading-row h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.035em; }
+.icon-button { color: #bcbcbc; }
+.icon-button:hover:not(:disabled) { color: #9dbfff; background: #ffffff0c; }
+.refresh-button, .change-folder-button, .show-more-button { border-color: #373737; border-radius: .4rem; background: #202020; }
+.change-folder-button:hover:not(:disabled), .show-more-button { color: #9dbfff; }
+.show-more-button:hover { border-color: #565656; background: #262626; }
+.breadcrumbs { color: #a1a1a1; }
+.crumb { color: #bdbdbd; }
+.crumb:hover { color: #9dbfff; }
+.crumb.current { color: #f3f3f3; }
+.notice { border-color: #343434; border-radius: .4rem; color: #c8d8f3; background: #202020; }
+.notice-mark { color: #9dbfff; }
+.notice.error { border-color: #523c36; color: #f0a28d; background: #261c1a; }
+.track-row { border-radius: .25rem; }
+.track-row:hover { background: #ffffff08; }
+.track-row.is-playing { background: #79aaff12; }
+.track-leading { color: #888; }
+.track-row.is-playing .track-leading, .track-row.is-playing .track-name { color: #9dbfff; }
+.track-name { color: #ededed; font-weight: 500; }
+.folder-icon { stroke: #9dbfff; }
+.favorite-button.active, .track-favorite.active { color: #9dbfff; }
+.empty-glyph { border-color: #3a3a3a; border-radius: .4rem; color: #9dbfff; }
+.empty-state p { color: #dedede; }
+.player { border-color: #363636; background: #1e1e1ef2; }
+.cover-tile { border-radius: .35rem; background: radial-gradient(circle at 50% 50%, #5079b6, #26384f 58%, #202020); }
+.cover-orbit { border-color: #d7e6ff80; }
+.cover-center { background: #c5dcff; box-shadow: 0 0 10px #9dbfff99; }
+.now-playing strong { color: #f1f1f1; }
+.play-button { color: #fff; background: #1769e8; }
+.play-button:hover:not(:disabled) { background: #2f7cf2; }
+.transport-secondary.active { color: #9dbfff; }
+.range-input { accent-color: #4d8ef0; }
+.toast { border-color: #414141; background: #262626; box-shadow: 0 8px 24px #0005; }
+@media (max-width: 700px) {
+  .intro { padding-top: 2rem; }
+  h1 { line-height: 1.02; }
+  .player { background: #1d1d1df5; }
+}
