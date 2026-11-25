@@ -687,5 +687,8 @@ html, body, .app-shell, main, .library { width: 100%; max-width: none; }
 .settings-folder:hover { border-color: #1680ff; background: #182535; }
 .settings-status { min-height: 1.2rem; margin: .8rem 0 0; color: #a0a1a4; font-size: .82rem; }
 .settings-status.is-error { color: #f1a091; }
-html, body { touch-action: pan-x pan-y; }
+html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .search-box input { font-size: 16px; }
+.player-loading { display: inline-flex; width: 1rem; height: 1rem; align-items: center; justify-content: center; vertical-align: middle; }
+.player-loading i { width: .8rem; height: .8rem; border: 2px solid #858585; border-right-color: #f3f3f3; border-radius: 50%; animation: player-loading-spin .7s linear infinite; }
+@keyframes player-loading-spin { to { transform: rotate(360deg); } }
