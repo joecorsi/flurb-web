@@ -239,6 +239,7 @@
     const root = state.libraryFolder.path_lower;
     path = path || root;
     if (!(path === root || path.startsWith(`${root}/`))) throw new Error("That folder is outside the selected Flurb library.");
+    if (path !== state.folderPath) els.search.value = "";
     state.folderPicker = false;
     state.folderPath = path;
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
@@ -295,7 +296,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = `crumb${index === relative.length - 1 ? " current" : ""}`;
-      button.textContent = part;
+      button.textContent = index === relative.length - 1 ? state.folderName : part;
       button.addEventListener("click", () => loadLibraryFolder(folderPath, part).catch((e) => showNotice(friendlyError(e), "error")));
       els.breadcrumbs.append(button);
     });
