@@ -7,7 +7,7 @@
   const els = {
     audio: $("#audio"), appKey: $("#app-key"), setupCard: $("#setup-card"), setupConnect: $("#setup-connect"), connectButton: $("#connect-button"),
     connectionState: $("#connection-state"), connectionLabel: $("#connection-label"), search: $("#search"), breadcrumbs: $("#breadcrumbs"),
-    trackList: $("#track-list"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
+    trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
     refresh: $("#refresh-button"), changeFolder: $("#change-folder-button"), help: $("#show-help"), helpPanel: $("#help-panel"), player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
     elapsed: $("#elapsed-time"), duration: $("#duration-time"), nowTitle: $("#now-title"), nowAlbum: $("#now-album"), nowFavorite: $("#now-favorite"),
@@ -206,7 +206,9 @@
     els.search.value = "";
     state.entries = [];
     state.tracks = [];
-    els.trackList.replaceChildren();
+    els.tableBody.replaceChildren();
+    els.tableBody.closest("table").hidden = false;
+    els.emptyState.hidden = true;
     showNotice("Choose the one Dropbox folder Flurb should use. Only tracks inside that folder and its subfolders will be shown.");
     els.refresh.classList.add("is-spinning");
     try {
@@ -306,23 +308,33 @@
     return state.tracks.filter((track) => !query || track.name.toLocaleLowerCase().includes(query));
   }
   function renderTracks() {
-    els.trackList.replaceChildren();
+    els.tableBody.replaceChildren();
+    els.emptyState.hidden = true;
     const query = els.search.value.trim().toLocaleLowerCase();
     const tracks = filteredTracks();
     const folders = state.entries.filter(isFolder).filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
     els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"} · ${folders.length} folder${folders.length === 1 ? "" : "s"}`;
-    if (!tracks.length && !folders.length) {
-      els.trackList.append(els.emptyState);
+    const rows = [
+      ...folders.map((folder) => ({ kind: "folder", item: folder })),
+      ...tracks.map((track) => ({ kind: "track", item: track }))
+    ].sort((a, b) => a.item.name.localeCompare(b.item.name, undefined, { numeric: true, sensitivity: "base" }));
+    if (!rows.length) {
+      els.emptyState.hidden = false;
       els.emptyState.querySelector("p").textContent = query ? "No tracks found." : "No music in this folder yet.";
       els.emptyState.querySelector("span").textContent = query ? "Try another search." : "Use Change folder to pick another Dropbox folder.";
+      els.tableBody.closest("table").hidden = true;
       return;
     }
-    const visibleFolders = folders.slice(0, state.displayLimit);
-    visibleFolders.forEach((folder) => els.trackList.append(makeFolderRow(folder)));
-    const trackLimit = Math.max(0, state.displayLimit - visibleFolders.length);
-    tracks.slice(0, trackLimit).forEach((track, index) => els.trackList.append(makeTrackRow(track, index)));
-    const remaining = folders.length + tracks.length - state.displayLimit;
+    els.tableBody.closest("table").hidden = false;
+    rows.slice(0, state.displayLimit).forEach(({ kind, item }, index) => {
+      els.tableBody.append(kind === "folder" ? makeFolderRow(item) : makeTrackRow(item, index));
+    });
+    const remaining = rows.length - state.displayLimit;
     if (remaining > 0) {
+      const row = document.createElement("tr");
+      row.className = "table-more-row";
+      const cell = document.createElement("td");
+      cell.colSpan = 4;
       const more = document.createElement("button");
       more.type = "button";
       more.className = "show-more-button";
@@ -331,20 +343,22 @@
         state.displayLimit += 100;
         renderTracks();
       });
-      els.trackList.append(more);
+      cell.append(more);
+      row.append(cell);
+      els.tableBody.append(row);
     }
   }
   function renderFolderPicker() {
-    els.trackList.replaceChildren();
+    els.tableBody.replaceChildren();
+    els.emptyState.hidden = true;
+    els.tableBody.closest("table").hidden = false;
     els.trackCount.textContent = "· choose one folder";
     const folders = state.entries.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-    folders.forEach((folder) => els.trackList.append(makeFolderRow(folder)));
+    folders.forEach((folder) => els.tableBody.append(makeFolderRow(folder)));
   }
   function makeFolderRow(folder) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "track-row folder-row";
-    row.setAttribute("aria-label", state.folderPicker ? `Use folder ${folder.name} as the library` : `Open subfolder ${folder.name}`);
+    const row = document.createElement("tr");
+    row.className = "library-row folder-row";
     const leading = document.createElement("span");
     leading.className = "track-leading";
     leading.innerHTML = '<svg class="folder-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h5l2 2h8A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
@@ -355,21 +369,34 @@
     title.textContent = folder.name;
     const meta = document.createElement("span");
     meta.className = "track-meta";
-    meta.textContent = "FOLDER";
+    meta.textContent = state.folderPicker ? "SELECT AS LIBRARY" : "OPEN FOLDER";
     copy.append(title, meta);
-    const chevron = document.createElement("span");
-    chevron.className = "track-duration";
-    chevron.textContent = state.folderPicker ? "USE  ›" : "OPEN  ›";
-    row.append(leading, copy, chevron);
-    row.addEventListener("click", () => {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "folder-open";
+    open.setAttribute("aria-label", state.folderPicker ? `Select ${folder.name} as your library` : `Open ${folder.name}`);
+    open.append(leading, copy);
+    const nameCell = document.createElement("td");
+    nameCell.append(open);
+    const kindCell = document.createElement("td");
+    kindCell.className = "table-kind";
+    kindCell.textContent = "FOLDER";
+    const sizeCell = document.createElement("td");
+    sizeCell.className = "table-size table-muted";
+    sizeCell.textContent = "—";
+    const actionCell = document.createElement("td");
+    actionCell.className = "table-actions";
+    actionCell.textContent = state.folderPicker ? "SELECT" : "OPEN ↗";
+    row.append(nameCell, kindCell, sizeCell, actionCell);
+    open.addEventListener("click", () => {
       if (state.folderPicker) selectLibraryFolder(folder).catch((e) => showNotice(friendlyError(e), "error"));
       else loadLibraryFolder(folder.path_lower, folder.name).catch((e) => showNotice(friendlyError(e), "error"));
     });
     return row;
   }
   function makeTrackRow(track, index) {
-    const row = document.createElement("div");
-    row.className = `track-row${state.current?.id === track.id ? " is-playing" : ""}`;
+    const row = document.createElement("tr");
+    row.className = `library-row track-row${state.current?.id === track.id ? " is-playing" : ""}`;
     const leading = document.createElement("span");
     leading.className = "track-leading";
     if (state.current?.id === track.id && !els.audio.paused) {
@@ -390,11 +417,14 @@
     title.textContent = track.name.replace(/\.[^.]+$/, "");
     const meta = document.createElement("span");
     meta.className = "track-meta";
-    meta.textContent = `${state.folderName.toUpperCase()} · ${formatBytes(track.size)}`;
+    meta.textContent = state.folderName.toUpperCase();
     copy.append(title, meta);
-    const duration = document.createElement("span");
-    duration.className = "track-duration";
-    duration.textContent = state.current?.id === track.id && Number.isFinite(els.audio.duration) ? formatTime(els.audio.duration) : "AUDIO";
+    const kind = document.createElement("td");
+    kind.className = "table-kind";
+    kind.textContent = "AUDIO";
+    const size = document.createElement("td");
+    size.className = "table-size table-muted";
+    size.textContent = formatBytes(track.size);
     const actions = document.createElement("div");
     actions.className = "track-actions";
     const favorite = document.createElement("button");
@@ -404,7 +434,13 @@
     favorite.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg>';
     favorite.addEventListener("click", () => toggleFavorite(track));
     actions.append(favorite);
-    row.append(leading, copy, duration, actions);
+    const nameCell = document.createElement("td");
+    nameCell.className = "table-name-cell";
+    nameCell.append(leading, copy);
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "table-actions";
+    actionsCell.append(actions);
+    row.append(nameCell, kind, size, actionsCell);
     row.addEventListener("dblclick", () => playTrack(track));
     return row;
   }
