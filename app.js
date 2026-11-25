@@ -18,6 +18,7 @@
     folderPicker: false,
     folderPath: "",
     folderName: "All files",
+    folderHistory: [],
     entries: [],
     tracks: [],
     displayLimit: 100,
@@ -87,6 +88,24 @@
     els.search.disabled = !connected || state.folderPicker || !state.libraryFolder;
     if (els.settingsLink) els.settingsLink.hidden = connected;
     updateQuickActions();
+  }
+  function playerArtist(track) {
+    const root = state.libraryFolder?.path_lower || "";
+    const relative = track.path_lower?.slice(root.length).split("/").filter(Boolean) || [];
+    return relative.length > 1 ? relative[0] : state.folderName;
+  }
+  function setPlayerMetadata(track) {
+    els.nowAlbum.textContent = playerArtist(track);
+  }
+  function goBackOneFolder() {
+    const root = state.libraryFolder?.path_lower;
+    if (!root || state.folderPicker || state.folderPath === root) return;
+    const previous = state.folderHistory.pop();
+    if (!previous || !(previous.path === root || previous.path.startsWith(`${root}/`))) {
+      state.folderHistory = [];
+      return loadLibraryFolder(root, state.libraryFolder.name).catch((error) => showNotice(friendlyError(error), "error"));
+    }
+    loadLibraryFolder(previous.path, previous.name).catch((error) => showNotice(friendlyError(error), "error"));
   }
   async function handleOAuthReturn() {
     const params = new URLSearchParams(location.search);
@@ -162,6 +181,7 @@
     updateFavoriteButton();
     updateTransport();
     state.folderPicker = true;
+    state.folderHistory = [];
     els.search.disabled = true;
     state.folderPath = "";
     state.folderName = "Choose a folder";
@@ -171,7 +191,6 @@
     state.tracks = [];
     els.tableBody.replaceChildren();
     els.emptyState.hidden = true;
-    showNotice("Loading folders…");
     try {
       // This one-time picker reads only top-level metadata to let the user select a folder.
       const allEntries = await listFolder("");
@@ -187,6 +206,7 @@
     state.libraryFolder = { id: folder.id, path_lower: folder.path_lower, name: folder.name };
     localStorage.setItem("flurb.dropbox.libraryFolder", JSON.stringify(state.libraryFolder));
     state.folderPicker = false;
+    state.folderHistory = [];
     updateConnection();
     await loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name);
   }
@@ -205,7 +225,6 @@
     state.folderPath = path;
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
     state.displayLimit = 100;
-    showNotice(`Loading ${state.folderName}…`);
     try {
       // Browse one level at a time. Every request is checked against the one selected library root.
       const entries = await listFolder(path, false);
@@ -318,7 +337,10 @@
     row.append(leading, copy);
     row.addEventListener("click", () => {
       if (state.folderPicker) selectLibraryFolder(folder).catch((e) => showNotice(friendlyError(e), "error"));
-      else loadLibraryFolder(folder.path_lower, folder.name).catch((e) => showNotice(friendlyError(e), "error"));
+      else {
+        if (state.folderPath && folder.path_lower !== state.folderPath) state.folderHistory.push({ path: state.folderPath, name: state.folderName });
+        loadLibraryFolder(folder.path_lower, folder.name).catch((e) => showNotice(friendlyError(e), "error"));
+      }
     });
     return row;
   }
@@ -346,9 +368,7 @@
     title.textContent = track.name.replace(/\.[^.]+$/, "");
     const meta = document.createElement("span");
     meta.className = "track-meta";
-    const root = state.libraryFolder?.path_lower || "";
-    const relative = track.path_display?.slice(root.length).split("/").filter(Boolean) || [];
-    meta.textContent = relative.length > 1 ? relative[0] : state.folderName;
+    meta.textContent = playerArtist(track);
     copy.append(title, meta);
     const actions = document.createElement("div");
     actions.className = "track-actions";
@@ -364,21 +384,19 @@
     return row;
   }
   async function playTrack(track) {
-    if (!state.token) return toast("Connect Dropbox first");
+    if (!state.token) return toast("Open Dropbox setup first");
     if (!isInsideLibrary(track)) return showNotice("That track is outside the selected Flurb folder.", "error");
     const requestId = ++state.playRequest;
     els.audio.pause();
     state.loadingTrack = true;
     state.current = track;
     els.nowTitle.textContent = track.name.replace(/\.[^.]+$/, "");
-    const root = state.libraryFolder?.path_lower || "";
-    const relative = track.path_display?.slice(root.length).split("/").filter(Boolean) || [];
-    els.nowAlbum.textContent = relative.length > 1 ? relative[0] : state.folderName;
+    setPlayerMetadata(track);
+    if (state.loadingTrack) els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
     els.nowFavorite.disabled = false;
     updateFavoriteButton();
     updateTransport();
     renderTracks();
-    showNotice(`Loading ${track.name}…`);
     try {
       const result = await dropbox("/files/get_temporary_link", { path: track.id });
       if (requestId !== state.playRequest) return;
@@ -392,6 +410,7 @@
     } finally {
       if (requestId === state.playRequest) {
         state.loadingTrack = false;
+        if (state.current) setPlayerMetadata(state.current);
         updateTransport();
       }
     }
@@ -504,6 +523,20 @@
   els.audio.addEventListener("error", () => {
     if (state.current && !els.audio.paused) showNotice("The audio stream was interrupted. Try playing the track again.", "error");
   });
+
+  let edgeSwipe = null;
+  document.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch" || event.clientX > 28) return;
+    edgeSwipe = { x: event.clientX, y: event.clientY };
+  }, { passive: true });
+  document.addEventListener("pointerup", (event) => {
+    if (!edgeSwipe) return;
+    const deltaX = event.clientX - edgeSwipe.x;
+    const deltaY = event.clientY - edgeSwipe.y;
+    edgeSwipe = null;
+    if (deltaX > 75 && Math.abs(deltaY) < 65) goBackOneFolder();
+  }, { passive: true });
+  document.addEventListener("pointercancel", () => { edgeSwipe = null; }, { passive: true });
 
   updateConnection();
   updateTransport();
