@@ -1,20 +1,23 @@
 (() => {
   "use strict";
   const API = "https://api.dropboxapi.com/2";
+  const DEFAULT_APP_KEY = "b7db4q3upd3kspx";
   const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aif", "aifc", "aiff", "au", "alac", "wma", "wm", "m4b", "m4p", "m4r", "mid"]);
   const $ = (selector) => document.querySelector(selector);
   const els = {
     audio: $("#audio"), appKey: $("#app-key"), setupCard: $("#setup-card"), setupConnect: $("#setup-connect"), connectButton: $("#connect-button"),
     connectionState: $("#connection-state"), connectionLabel: $("#connection-label"), search: $("#search"), breadcrumbs: $("#breadcrumbs"),
     trackList: $("#track-list"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
-    refresh: $("#refresh-button"), help: $("#show-help"), helpPanel: $("#help-panel"), player: $("#player"), play: $("#play-button"),
+    refresh: $("#refresh-button"), changeFolder: $("#change-folder-button"), help: $("#show-help"), helpPanel: $("#help-panel"), player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
     elapsed: $("#elapsed-time"), duration: $("#duration-time"), nowTitle: $("#now-title"), nowAlbum: $("#now-album"), nowFavorite: $("#now-favorite"),
     volume: $("#volume"), toast: $("#toast")
   };
   const state = {
-    appKey: localStorage.getItem("flurb.dropbox.appKey") || "",
+    appKey: localStorage.getItem("flurb.dropbox.appKey") || DEFAULT_APP_KEY,
     token: sessionStorage.getItem("flurb.dropbox.accessToken") || "",
+    libraryFolder: null,
+    folderPicker: false,
     folderPath: "",
     folderName: "All files",
     entries: [],
@@ -27,6 +30,7 @@
     playRequest: 0,
     toastTimer: null
   };
+  try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
   els.appKey.value = state.appKey;
   els.audio.volume = Number(els.volume.value);
 
@@ -46,7 +50,7 @@
     const text = String(error?.message || error || "Something went wrong.");
     if (/expired_access_token|invalid_access_token|401/i.test(text)) return "Your Dropbox session expired. Connect again to keep listening.";
     if (/missing_scope|insufficient_scope/i.test(text)) return "This Dropbox app needs files.metadata.read and files.content.read permissions. Save the permissions, then reconnect.";
-    if (/path\/not_found/i.test(text)) return "That folder is no longer available. Go back to your Dropbox files.";
+    if (/path\/not_found/i.test(text)) return "That folder is no longer available. Choose another library folder.";
     return text;
   }
   async function dropbox(path, body = {}) {
@@ -150,21 +154,22 @@
     els.connectionState.classList.toggle("connected", connected);
     els.connectionLabel.textContent = connected ? "Dropbox connected" : "Not connected";
     els.connectButton.textContent = connected ? "Reconnect" : "Connect Dropbox";
-    els.search.disabled = !connected;
+    els.search.disabled = !connected || state.folderPicker || !state.libraryFolder;
     els.refresh.disabled = !connected;
+    els.changeFolder.disabled = !connected;
     els.setupCard.classList.toggle("connected", connected);
   }
   async function connectLibrary() {
     updateConnection();
-    showNotice("Looking for your music…");
     try {
-      await loadFolder("");
+      if (state.libraryFolder?.id && state.libraryFolder?.path_lower) await loadLibraryFolder();
+      else await openFolderPicker();
     } catch (error) {
       showNotice(friendlyError(error), "error");
     }
   }
-  async function listFolder(path) {
-    let response = await dropbox("/files/list_folder", { path, recursive: false, include_deleted: false, include_media_info: true });
+  async function listFolder(path, recursive = false) {
+    let response = await dropbox("/files/list_folder", { path, recursive, include_deleted: false });
     let entries = [...(response.entries || [])];
     while (response.has_more) {
       response = await dropbox("/files/list_folder/continue", { cursor: response.cursor });
@@ -178,47 +183,86 @@
     const extension = entry.name.split(".").pop().toLowerCase();
     return AUDIO_EXTENSIONS.has(extension);
   };
-  async function loadFolder(path, name) {
-    showNotice("Opening folder…");
+  async function openFolderPicker() {
+    els.audio.pause();
+    els.audio.removeAttribute("src");
+    els.audio.load();
+    state.current = null;
+    state.loadingTrack = false;
+    els.nowTitle.textContent = "Nothing playing yet";
+    els.nowAlbum.textContent = "Choose a track from your collection";
+    els.nowFavorite.disabled = true;
+    updateFavoriteButton();
+    updateTransport();
+    state.folderPicker = true;
+    els.search.disabled = true;
+    state.folderPath = "";
+    state.folderName = "Choose a folder";
+    state.entries = [];
+    state.tracks = [];
+    els.trackList.replaceChildren();
+    showNotice("Choose the one Dropbox folder Flurb should use. Only tracks inside that folder and its subfolders will be shown.");
     els.refresh.classList.add("is-spinning");
     try {
-      state.folderPath = path;
-      state.folderName = name || (path ? path.split("/").pop() : "All files");
-      const allEntries = await listFolder(path);
-      state.entries = allEntries.filter((entry) => isFolder(entry) || isAudio(entry));
-      state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+      // This one-time picker reads only top-level metadata to let the user select a folder.
+      const allEntries = await listFolder("");
+      state.entries = allEntries.filter(isFolder);
+      state.tracks = [];
+      renderFolderPicker();
+      renderBreadcrumbs();
+      if (!state.entries.length) showNotice("No folders were found in your Dropbox root.", "error");
+    } catch (error) {
+      showNotice(friendlyError(error), "error");
+    } finally {
+      els.refresh.classList.remove("is-spinning");
+    }
+  }
+  async function selectLibraryFolder(folder) {
+    state.libraryFolder = { id: folder.id, path_lower: folder.path_lower, name: folder.name };
+    localStorage.setItem("flurb.dropbox.libraryFolder", JSON.stringify(state.libraryFolder));
+    state.folderPicker = false;
+    updateConnection();
+    await loadLibraryFolder();
+  }
+  function isInsideLibrary(track) {
+    const root = state.libraryFolder?.path_lower;
+    return Boolean(root && track.path_lower && track.path_lower.startsWith(`${root}/`));
+  }
+  async function loadLibraryFolder() {
+    if (!state.libraryFolder?.id || !state.libraryFolder?.path_lower) return openFolderPicker();
+    state.folderPicker = false;
+    state.folderPath = state.libraryFolder.path_lower;
+    state.folderName = state.libraryFolder.name;
+    showNotice(`Loading ${state.folderName}…`);
+    els.refresh.classList.add("is-spinning");
+    try {
+      // The selected folder ID is the only root used for library listings. Recursive listing stays inside it.
+      const entries = await listFolder(state.libraryFolder.id, true);
+      state.entries = entries.filter((entry) => isAudio(entry) && isInsideLibrary(entry));
+      state.tracks = state.entries.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       renderBreadcrumbs();
       renderTracks();
       hideNotice();
-      if (state.entries.length === 0) showNotice("This folder is empty. Try another Dropbox folder.");
+      if (!state.tracks.length) showNotice("No playable tracks found in this folder or its subfolders.");
+    } catch (error) {
+      const message = friendlyError(error);
+      if (/no longer available/i.test(message)) {
+        state.libraryFolder = null;
+        localStorage.removeItem("flurb.dropbox.libraryFolder");
+        await openFolderPicker();
+        return;
+      }
+      throw error;
     } finally {
       els.refresh.classList.remove("is-spinning");
     }
   }
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
-    const parts = state.folderPath.split("/").filter(Boolean);
-    const root = document.createElement("button");
-    root.type = "button";
-    root.className = `crumb${parts.length === 0 ? " current" : ""}`;
-    root.textContent = "All files";
-    root.addEventListener("click", () => loadFolder("", "All files").catch((e) => showNotice(friendlyError(e), "error")));
-    els.breadcrumbs.append(root);
-    let current = "";
-    parts.forEach((part, index) => {
-      const separator = document.createElement("span");
-      separator.className = "crumb-separator";
-      separator.textContent = "/";
-      els.breadcrumbs.append(separator);
-      current += `/${part}`;
-      const path = current;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `crumb${index === parts.length - 1 ? " current" : ""}`;
-      button.textContent = part;
-      button.addEventListener("click", () => loadFolder(path, part).catch((e) => showNotice(friendlyError(e), "error")));
-      els.breadcrumbs.append(button);
-    });
+    const label = document.createElement("span");
+    label.className = "crumb current";
+    label.textContent = state.folderPicker ? "Choose one Dropbox folder" : state.folderName;
+    els.breadcrumbs.append(label);
   }
   function filteredTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
@@ -227,18 +271,21 @@
   function renderTracks() {
     els.trackList.replaceChildren();
     const query = els.search.value.trim().toLocaleLowerCase();
-    const folders = state.entries.filter(isFolder).filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
     const tracks = filteredTracks();
     els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"}`;
-    if (!folders.length && !tracks.length) {
+    if (!tracks.length) {
       els.trackList.append(els.emptyState);
       els.emptyState.querySelector("p").textContent = query ? "No tracks found." : "No music in this folder yet.";
-      els.emptyState.querySelector("span").textContent = query ? "Try another search." : "Choose a different folder or add some music to Dropbox.";
+      els.emptyState.querySelector("span").textContent = query ? "Try another search." : "Use Change folder to pick another Dropbox folder.";
       return;
     }
-    folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-    folders.forEach((folder) => els.trackList.append(makeFolderRow(folder)));
     tracks.forEach((track, index) => els.trackList.append(makeTrackRow(track, index)));
+  }
+  function renderFolderPicker() {
+    els.trackList.replaceChildren();
+    els.trackCount.textContent = "· choose one folder";
+    const folders = state.entries.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    folders.forEach((folder) => els.trackList.append(makeFolderRow(folder)));
   }
   function makeFolderRow(folder) {
     const row = document.createElement("button");
@@ -259,9 +306,9 @@
     copy.append(title, meta);
     const chevron = document.createElement("span");
     chevron.className = "track-duration";
-    chevron.textContent = "OPEN  ›";
+    chevron.textContent = "USE  ›";
     row.append(leading, copy, chevron);
-    row.addEventListener("click", () => loadFolder(folder.path_lower, folder.name).catch((e) => showNotice(friendlyError(e), "error")));
+    row.addEventListener("click", () => selectLibraryFolder(folder).catch((e) => showNotice(friendlyError(e), "error")));
     return row;
   }
   function makeTrackRow(track, index) {
@@ -307,6 +354,7 @@
   }
   async function playTrack(track) {
     if (!state.token) return toast("Connect Dropbox first");
+    if (!isInsideLibrary(track)) return showNotice("That track is outside the selected Flurb folder.", "error");
     const requestId = ++state.playRequest;
     els.audio.pause();
     state.loadingTrack = true;
@@ -403,7 +451,11 @@
     els.helpPanel.hidden = expanded;
   });
   els.search.addEventListener("input", renderTracks);
-  els.refresh.addEventListener("click", () => loadFolder(state.folderPath, state.folderName).catch((e) => showNotice(friendlyError(e), "error")));
+  els.refresh.addEventListener("click", () => {
+    if (state.folderPicker) openFolderPicker();
+    else loadLibraryFolder().catch((e) => showNotice(friendlyError(e), "error"));
+  });
+  els.changeFolder.addEventListener("click", () => openFolderPicker());
   els.play.addEventListener("click", () => {
     if (!state.current) return;
     if (els.audio.paused) els.audio.play().catch((e) => showNotice(friendlyError(e), "error"));
