@@ -1,22 +1,18 @@
 (() => {
   "use strict";
   const API = "https://api.dropboxapi.com/2";
-  const DEFAULT_APP_KEY = "b7db4q3upd3kspx";
   const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aif", "aifc", "aiff", "au", "alac", "wma", "wm", "m4b", "m4p", "m4r", "mid"]);
   const $ = (selector) => document.querySelector(selector);
   const els = {
-    audio: $("#audio"), appKey: $("#app-key"), setupCard: $("#setup-card"), setupConnect: $("#setup-connect"), connectButton: $("#connect-button"),
-    connectionState: $("#connection-state"), connectionLabel: $("#connection-label"), search: $("#search"), breadcrumbs: $("#breadcrumbs"),
+    audio: $("#audio"), search: $("#search"),
     trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
-    refresh: $("#refresh-button"), changeFolder: $("#change-folder-button"), recent: $("#recent-button"), recentCount: $("#recent-count"), favoritesButton: $("#favorites-button"), favoritesCount: $("#favorites-count"), player: $("#player"), play: $("#play-button"),
+    recent: $("#recent-button"), recentCount: $("#recent-count"), favoritesButton: $("#favorites-button"), favoritesCount: $("#favorites-count"), player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
     elapsed: $("#elapsed-time"), duration: $("#duration-time"), nowTitle: $("#now-title"), nowAlbum: $("#now-album"), nowFavorite: $("#now-favorite"),
-    volume: $("#volume"), toast: $("#toast"), coverTile: $("#cover-tile")
+    toast: $("#toast")
   };
   const state = {
-    appKey: localStorage.getItem("flurb.dropbox.appKey") || DEFAULT_APP_KEY,
     token: sessionStorage.getItem("flurb.dropbox.accessToken") || "",
-    loginOpen: false,
     libraryFolder: null,
     viewMode: "library",
     folderPicker: false,
@@ -32,6 +28,7 @@
     favorites: new Set(JSON.parse(localStorage.getItem("flurb.dropbox.favorites") || "[]")),
     favoriteItems: new Map(),
     playRequest: 0,
+    listObserver: null,
     toastTimer: null
   };
   try {
@@ -39,8 +36,7 @@
     if (Array.isArray(savedItems)) state.favoriteItems = new Map(savedItems.filter((track) => track?.id).map((track) => [track.id, track]));
   } catch (_) {}
   try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
-  els.appKey.value = state.appKey;
-  els.audio.volume = Number(els.volume.value);
+  els.audio.volume = 0.8;
 
   function showNotice(message, kind = "info") {
     els.noticeMessage.textContent = message;
@@ -56,9 +52,9 @@
   }
   function friendlyError(error) {
     const text = String(error?.message || error || "Something went wrong.");
-    if (/expired_access_token|invalid_access_token|401/i.test(text)) return "Your Dropbox session expired. Connect again to keep listening.";
-    if (/missing_scope|insufficient_scope/i.test(text)) return "This Dropbox app needs files.metadata.read and files.content.read permissions. Save the permissions, then reconnect.";
-    if (/path\/not_found/i.test(text)) return "That folder is no longer available. Choose another library folder.";
+    if (/expired_access_token|invalid_access_token|401/i.test(text)) return "Your Dropbox session expired.";
+    if (/missing_scope|insufficient_scope/i.test(text)) return "This Dropbox app needs files.metadata.read and files.content.read permissions.";
+    if (/path\/not_found/i.test(text)) return "The selected library folder is no longer available.";
     return text;
   }
   async function dropbox(path, body = {}) {
@@ -85,93 +81,9 @@
     }
     return payload;
   }
-  function randomString(bytes = 32) {
-    const values = crypto.getRandomValues(new Uint8Array(bytes));
-    return Array.from(values, (v) => v.toString(16).padStart(2, "0")).join("");
-  }
-  function base64Url(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
-  async function startOAuth() {
-    const appKey = els.appKey.value.trim();
-    if (!appKey) {
-      els.appKey.focus();
-      showNotice("Add your Dropbox app key first.", "error");
-      return;
-    }
-    if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
-      showNotice("Dropbox sign-in needs HTTPS, or localhost for local development.", "error");
-      return;
-    }
-    state.appKey = appKey;
-    localStorage.setItem("flurb.dropbox.appKey", appKey);
-    const verifier = randomString(48);
-    const challenge = base64Url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-    const csrf = randomString(24);
-    sessionStorage.setItem("flurb.dropbox.pkce", JSON.stringify({ verifier, csrf, redirectUri: location.href.split("?")[0].split("#")[0] }));
-    const params = new URLSearchParams({
-      client_id: appKey,
-      response_type: "code",
-      code_challenge: challenge,
-      code_challenge_method: "S256",
-      redirect_uri: location.href.split("?")[0].split("#")[0],
-      state: csrf,
-      scope: "files.metadata.read files.content.read"
-    });
-    location.assign(`https://www.dropbox.com/oauth2/authorize?${params.toString()}`);
-  }
-  async function handleOAuthReturn() {
-    const params = new URLSearchParams(location.search);
-    const code = params.get("code");
-    const error = params.get("error_description") || params.get("error");
-    if (!code && !error) return;
-    history.replaceState({}, document.title, location.pathname + location.hash);
-    if (error) {
-      sessionStorage.removeItem("flurb.dropbox.pkce");
-      showNotice(`Dropbox sign-in was not completed: ${error}`, "error");
-      return;
-    }
-    let pending;
-    try { pending = JSON.parse(sessionStorage.getItem("flurb.dropbox.pkce") || "null"); } catch (_) {}
-    sessionStorage.removeItem("flurb.dropbox.pkce");
-    if (!pending || params.get("state") !== pending.csrf) {
-      showNotice("Dropbox sign-in could not be verified. Please connect again.", "error");
-      return;
-    }
-    try {
-      const form = new URLSearchParams({
-        code,
-        grant_type: "authorization_code",
-        client_id: state.appKey,
-        code_verifier: pending.verifier,
-        redirect_uri: pending.redirectUri
-      });
-      const response = await fetch("https://api.dropboxapi.com/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error_description || result.error || "Dropbox could not complete sign-in.");
-      state.token = result.access_token;
-      sessionStorage.setItem("flurb.dropbox.accessToken", state.token);
-      toast("Dropbox connected");
-      await connectLibrary();
-    } catch (err) {
-      showNotice(friendlyError(err), "error");
-    }
-  }
   function updateConnection() {
     const connected = Boolean(state.token);
-    els.connectionState.classList.toggle("connected", connected);
-    els.connectionLabel.textContent = connected ? "Dropbox connected" : "Not connected";
-    els.connectButton.textContent = connected ? "Reconnect" : "Connect Dropbox";
     els.search.disabled = !connected || state.folderPicker || !state.libraryFolder;
-    els.refresh.disabled = !connected;
-    els.changeFolder.disabled = !connected;
-    els.setupCard.classList.toggle("connected", connected);
-    if (connected) state.loginOpen = false;
-    els.setupCard.hidden = connected || !state.loginOpen;
-    document.body.classList.toggle("is-connected", connected);
     updateQuickActions();
   }
   function updateQuickActions() {
@@ -227,20 +139,16 @@
     state.tracks = [];
     els.tableBody.replaceChildren();
     els.emptyState.hidden = true;
-    showNotice("Choose a folder");
-    els.refresh.classList.add("is-spinning");
+    showNotice("Loading folders…");
     try {
       // This one-time picker reads only top-level metadata to let the user select a folder.
       const allEntries = await listFolder("");
       state.entries = allEntries.filter(isFolder);
       state.tracks = [];
       renderFolderPicker();
-      renderBreadcrumbs();
       if (!state.entries.length) showNotice("No folders were found in your Dropbox root.", "error");
     } catch (error) {
       showNotice(friendlyError(error), "error");
-    } finally {
-      els.refresh.classList.remove("is-spinning");
     }
   }
   async function selectLibraryFolder(folder) {
@@ -266,14 +174,12 @@
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
     state.displayLimit = 100;
     showNotice(`Loading ${state.folderName}…`);
-    els.refresh.classList.add("is-spinning");
     try {
       // Browse one level at a time. Every request is checked against the one selected library root.
       const entries = await listFolder(path, false);
       state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       updateQuickActions();
-      renderBreadcrumbs();
       renderTracks();
       hideNotice();
       if (!state.tracks.length && !state.entries.some(isFolder)) showNotice("No playable tracks found in this folder.");
@@ -286,42 +192,7 @@
         return;
       }
       throw error;
-    } finally {
-      els.refresh.classList.remove("is-spinning");
     }
-  }
-  function renderBreadcrumbs() {
-    els.breadcrumbs.replaceChildren();
-    if (state.folderPicker) {
-      const label = document.createElement("span");
-      label.className = "crumb current";
-      label.textContent = "Choose one Dropbox folder";
-      els.breadcrumbs.append(label);
-      return;
-    }
-    const rootPath = state.libraryFolder?.path_lower || "";
-    const root = document.createElement("button");
-    root.type = "button";
-    root.className = `crumb${state.folderPath === rootPath ? " current" : ""}`;
-    root.textContent = state.libraryFolder?.name || state.folderName;
-    root.addEventListener("click", () => loadLibraryFolder(rootPath, state.libraryFolder.name).catch((e) => showNotice(friendlyError(e), "error")));
-    els.breadcrumbs.append(root);
-    const relative = state.folderPath.slice(rootPath.length).split("/").filter(Boolean);
-    let path = rootPath;
-    relative.forEach((part, index) => {
-      const separator = document.createElement("span");
-      separator.className = "crumb-separator";
-      separator.textContent = "/";
-      els.breadcrumbs.append(separator);
-      path += `/${part}`;
-      const folderPath = path;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `crumb${index === relative.length - 1 ? " current" : ""}`;
-      button.textContent = index === relative.length - 1 ? state.folderName : part;
-      button.addEventListener("click", () => loadLibraryFolder(folderPath, part).catch((e) => showNotice(friendlyError(e), "error")));
-      els.breadcrumbs.append(button);
-    });
   }
   function filteredTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
@@ -337,6 +208,7 @@
     return state.tracks;
   }
   function renderTracks() {
+    state.listObserver?.disconnect();
     els.tableBody.replaceChildren();
     els.emptyState.hidden = true;
     const query = els.search.value.trim().toLocaleLowerCase();
@@ -363,25 +235,36 @@
     const remaining = rows.length - state.displayLimit;
     if (remaining > 0) {
       const row = document.createElement("div");
-      row.className = "table-more-row";
-      const more = document.createElement("button");
-      more.type = "button";
-      more.className = "show-more-button";
-      more.textContent = `Show ${Math.min(100, remaining)} more (${remaining} left)`;
-      more.addEventListener("click", () => {
+      row.className = "list-sentinel";
+      els.tableBody.append(row);
+      state.listObserver = new IntersectionObserver((items) => {
+        if (!items.some((item) => item.isIntersecting)) return;
+        state.listObserver?.disconnect();
         state.displayLimit += 100;
         renderTracks();
-      });
-      row.append(more);
-      els.tableBody.append(row);
+      }, { rootMargin: "500px 0px" });
+      state.listObserver.observe(row);
     }
   }
   function renderFolderPicker() {
+    state.listObserver?.disconnect();
     els.tableBody.replaceChildren();
     els.emptyState.hidden = true;
     els.trackCount.textContent = "· choose one folder";
     const folders = state.entries.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-    folders.forEach((folder, index) => els.tableBody.append(makeFolderRow(folder, index)));
+    folders.slice(0, state.displayLimit).forEach((folder, index) => els.tableBody.append(makeFolderRow(folder, index)));
+    if (folders.length > state.displayLimit) {
+      const sentinel = document.createElement("div");
+      sentinel.className = "list-sentinel";
+      els.tableBody.append(sentinel);
+      state.listObserver = new IntersectionObserver((items) => {
+        if (!items.some((item) => item.isIntersecting)) return;
+        state.listObserver?.disconnect();
+        state.displayLimit += 100;
+        renderFolderPicker();
+      }, { rootMargin: "500px 0px" });
+      state.listObserver.observe(sentinel);
+    }
   }
   function makeFolderRow(folder, index = 0) {
     const row = document.createElement("button");
@@ -431,7 +314,9 @@
     title.textContent = track.name.replace(/\.[^.]+$/, "");
     const meta = document.createElement("span");
     meta.className = "track-meta";
-    meta.textContent = state.folderName.toUpperCase();
+    const root = state.libraryFolder?.path_lower || "";
+    const relative = track.path_display?.slice(root.length).split("/").filter(Boolean) || [];
+    meta.textContent = relative.length > 1 ? relative[0] : state.folderName;
     copy.append(title, meta);
     const actions = document.createElement("div");
     actions.className = "track-actions";
@@ -454,7 +339,9 @@
     state.loadingTrack = true;
     state.current = track;
     els.nowTitle.textContent = track.name.replace(/\.[^.]+$/, "");
-    els.nowAlbum.textContent = track.path_display || track.name;
+    const root = state.libraryFolder?.path_lower || "";
+    const relative = track.path_display?.slice(root.length).split("/").filter(Boolean) || [];
+    els.nowAlbum.textContent = relative.length > 1 ? relative[0] : state.folderName;
     els.nowFavorite.disabled = false;
     updateFavoriteButton();
     updateTransport();
@@ -541,22 +428,9 @@
     }
     updateTransport();
   }
-  els.setupConnect.addEventListener("click", startOAuth);
-  els.connectButton.addEventListener("click", () => {
-    if (state.token) return startOAuth();
-    state.loginOpen = true;
-    els.setupCard.hidden = false;
-    els.setupCard.scrollIntoView({ behavior: "smooth", block: "center" });
-    els.appKey.focus({ preventScroll: true });
-  });
   els.search.addEventListener("input", () => { state.displayLimit = 100; renderTracks(); });
   els.recent.addEventListener("click", () => { state.viewMode = "recent"; updateQuickActions(); renderTracks(); });
   els.favoritesButton.addEventListener("click", () => { state.viewMode = "favorites"; updateQuickActions(); renderTracks(); });
-  els.refresh.addEventListener("click", () => {
-    if (state.folderPicker) openFolderPicker();
-    else loadLibraryFolder(state.folderPath, state.folderName).catch((e) => showNotice(friendlyError(e), "error"));
-  });
-  els.changeFolder.addEventListener("click", () => openFolderPicker());
   els.play.addEventListener("click", () => {
     if (!state.current) return;
     if (els.audio.paused) els.audio.play().catch((e) => showNotice(friendlyError(e), "error"));
@@ -586,7 +460,6 @@
   els.progress.addEventListener("input", () => {
     if (Number.isFinite(els.audio.duration)) els.audio.currentTime = (Number(els.progress.value) / 100) * els.audio.duration;
   });
-  els.volume.addEventListener("input", () => { els.audio.volume = Number(els.volume.value); });
   els.audio.addEventListener("timeupdate", renderProgress);
   els.audio.addEventListener("loadedmetadata", () => { renderProgress(); renderTracks(); });
   els.audio.addEventListener("play", () => { updateTransport(); renderTracks(); });
@@ -603,5 +476,4 @@
   updateConnection();
   updateTransport();
   if (state.token) connectLibrary();
-  handleOAuthReturn();
 })();
