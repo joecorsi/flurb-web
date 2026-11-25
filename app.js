@@ -107,6 +107,20 @@
     }
     loadLibraryFolder(previous.path, previous.name).catch((error) => showNotice(friendlyError(error), "error"));
   }
+  function installHistoryNavigation() {
+    history.replaceState({ flurbRootGuard: true }, "", location.href);
+    history.pushState({ flurbRootGuard: true }, "", location.href);
+    window.addEventListener("popstate", () => {
+      const root = state.libraryFolder?.path_lower;
+      const atLibraryRoot = !root || state.folderPicker || !state.folderPath || state.folderPath === root;
+      if (atLibraryRoot) {
+        // Keep iOS standalone-app edge swipes inside Flurb at the library boundary.
+        history.pushState({ flurbRootGuard: true }, "", location.href);
+        return;
+      }
+      goBackOneFolder();
+    });
+  }
   async function handleOAuthReturn() {
     const params = new URLSearchParams(location.search);
     const code = params.get("code");
@@ -338,7 +352,10 @@
     row.addEventListener("click", () => {
       if (state.folderPicker) selectLibraryFolder(folder).catch((e) => showNotice(friendlyError(e), "error"));
       else {
-        if (state.folderPath && folder.path_lower !== state.folderPath) state.folderHistory.push({ path: state.folderPath, name: state.folderName });
+        if (state.folderPath && folder.path_lower !== state.folderPath) {
+          state.folderHistory.push({ path: state.folderPath, name: state.folderName });
+          history.pushState({ flurbFolder: folder.path_lower }, "", location.href);
+        }
         loadLibraryFolder(folder.path_lower, folder.name).catch((e) => showNotice(friendlyError(e), "error"));
       }
     });
@@ -534,10 +551,11 @@
     const deltaX = event.clientX - edgeSwipe.x;
     const deltaY = event.clientY - edgeSwipe.y;
     edgeSwipe = null;
-    if (deltaX > 75 && Math.abs(deltaY) < 65) goBackOneFolder();
+    if (deltaX > 75 && Math.abs(deltaY) < 65 && state.folderPath !== state.libraryFolder?.path_lower) history.back();
   }, { passive: true });
   document.addEventListener("pointercancel", () => { edgeSwipe = null; }, { passive: true });
 
+  installHistoryNavigation();
   updateConnection();
   updateTransport();
   handleOAuthReturn().then((handled) => { if (!handled && state.token) connectLibrary(); });
