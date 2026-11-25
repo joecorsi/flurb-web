@@ -2,7 +2,7 @@
 
 A small, mobile-first browser player for audio files stored in Dropbox. It is a static page and uses Dropbox OAuth 2 with PKCE directly from the browser; no client secret or server is used. The app requests only `files.metadata.read` and `files.content.read`. OAuth access tokens are kept in the current browser tab's session storage, and favorites are saved locally in that browser.
 
-The GitHub Pages version will be available at <https://joecorsi.github.io/flurb-web/>.
+Live at <https://joecorsi.github.io/flurb-web/>.
 
 ## Run locally
 
