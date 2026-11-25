@@ -9,10 +9,10 @@
     recent: $("#recent-button"), recentCount: $("#recent-count"), favoritesButton: $("#favorites-button"), favoritesCount: $("#favorites-count"), player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
     elapsed: $("#elapsed-time"), duration: $("#duration-time"), nowTitle: $("#now-title"), nowAlbum: $("#now-album"), nowFavorite: $("#now-favorite"),
-    toast: $("#toast")
+    toast: $("#toast"), settingsLink: $("#settings-link")
   };
   const state = {
-    token: sessionStorage.getItem("flurb.dropbox.accessToken") || "",
+    token: localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "",
     libraryFolder: null,
     viewMode: "library",
     folderPicker: false,
@@ -73,6 +73,7 @@
       if (response.status === 401) {
         state.token = "";
         sessionStorage.removeItem("flurb.dropbox.accessToken");
+        localStorage.removeItem("flurb.dropbox.accessToken");
         updateConnection();
       }
       const requestId = response.headers.get("x-dropbox-request-id");
@@ -84,7 +85,38 @@
   function updateConnection() {
     const connected = Boolean(state.token);
     els.search.disabled = !connected || state.folderPicker || !state.libraryFolder;
+    if (els.settingsLink) els.settingsLink.hidden = connected;
     updateQuickActions();
+  }
+  async function handleOAuthReturn() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    if (!code && !params.has("error")) return false;
+    history.replaceState({}, document.title, location.pathname + location.hash);
+    if (params.has("error")) {
+      showNotice("Dropbox sign-in was not completed.", "error");
+      return true;
+    }
+    let pending;
+    try { pending = JSON.parse(sessionStorage.getItem("flurb.dropbox.pkce") || "null"); } catch (_) {}
+    sessionStorage.removeItem("flurb.dropbox.pkce");
+    if (!pending || params.get("state") !== pending.csrf) {
+      showNotice("Dropbox sign-in could not be verified.", "error");
+      return true;
+    }
+    try {
+      const form = new URLSearchParams({ code, grant_type: "authorization_code", client_id: "b7db4q3upd3kspx", code_verifier: pending.verifier, redirect_uri: pending.redirectUri });
+      const response = await fetch("https://api.dropboxapi.com/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error_description || result.error || "Dropbox sign-in failed.");
+      state.token = result.access_token;
+      localStorage.setItem("flurb.dropbox.accessToken", state.token);
+      sessionStorage.setItem("flurb.dropbox.accessToken", state.token);
+      location.replace(new URL("./settings.html?connected=1", location.href).href);
+    } catch (error) {
+      showNotice(friendlyError(error), "error");
+    }
+    return true;
   }
   function updateQuickActions() {
     els.recent.classList.toggle("active", state.viewMode === "recent");
@@ -475,5 +507,5 @@
 
   updateConnection();
   updateTransport();
-  if (state.token) connectLibrary();
+  handleOAuthReturn().then((handled) => { if (!handled && state.token) connectLibrary(); });
 })();
