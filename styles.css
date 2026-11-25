@@ -221,6 +221,81 @@ code { color: var(--lime); font: .9em var(--mono); }
   .player { padding-top: .55rem; }
 }
 
+/* Compact mobile library rows and the simplified bottom player. */
+:root { --library-row-height: 4.5rem; }
+.app-shell { padding-bottom: calc(12.8rem + env(safe-area-inset-bottom)); }
+.library-sticky { gap: .45rem; padding: .55rem .75rem; }
+.quick-actions { gap: .45rem; }
+.quick-tile {
+  height: var(--library-row-height);
+  min-height: var(--library-row-height);
+  aspect-ratio: auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: .3rem;
+  padding: .55rem .7rem;
+}
+.quick-tile-label { max-width: 72%; font-size: .82rem; line-height: 1.2; }
+.quick-tile-count { flex: 0 0 auto; font-size: 1.1rem; letter-spacing: -.04em; }
+.quick-tile-icon { display: none; }
+.search-row { min-height: var(--library-row-height); }
+.search-box { flex: 1 1 auto; height: var(--library-row-height); padding: 0 .8rem; border-radius: 4px; }
+.artist-row { height: var(--library-row-height); min-height: var(--library-row-height); padding: .45rem .75rem; }
+.track-rows { gap: .3rem; }
+.list-sentinel { height: 1px; }
+
+.player {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "track" "seek" "transport";
+  gap: .25rem;
+  padding: .45rem .75rem calc(.55rem + env(safe-area-inset-bottom));
+}
+.player-track {
+  position: relative;
+  grid-area: track;
+  min-height: 3.5rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: .2rem;
+  padding: 0 2.7rem;
+  text-align: center;
+}
+.player-waveform { display: flex; height: .9rem; align-items: center; justify-content: center; gap: 2px; color: #b6b6b6; }
+.player-waveform i { display: block; width: 2px; height: 35%; border-radius: 2px; background: currentColor; }
+.player-waveform i:nth-child(2), .player-waveform i:nth-child(6) { height: 70%; }
+.player-waveform i:nth-child(3), .player-waveform i:nth-child(5) { height: 100%; }
+.player-waveform i:nth-child(4) { height: 55%; }
+.now-playing { align-items: center; gap: .08rem; }
+.now-playing strong { font-size: .82rem; }
+.now-playing span:last-child { font-size: .72rem; }
+.favorite-button { position: absolute; top: 50%; right: .15rem; transform: translateY(-50%); }
+.player-controls { display: contents; }
+.scrubber-row { grid-area: seek; min-height: 1.5rem; gap: .35rem; }
+.time-label { width: 2rem; font-size: .62rem; }
+.transport { grid-area: transport; justify-content: center; gap: clamp(.35rem, 4vw, .9rem); }
+.transport .icon-button { width: 2.15rem; height: 2.15rem; }
+.transport .icon-button svg { width: 1.05rem; height: 1.05rem; }
+.transport .play-button { width: 2.5rem; height: 2.5rem; }
+.toast { bottom: calc(11rem + env(safe-area-inset-bottom)); }
+@media (min-width: 700px) {
+  .app-shell { padding-bottom: calc(12.8rem + env(safe-area-inset-bottom)); }
+  .library-sticky { padding: .7rem 1.25rem; }
+  .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quick-tile { height: var(--library-row-height); min-height: var(--library-row-height); aspect-ratio: auto; }
+  .artist-row { height: var(--library-row-height); min-height: var(--library-row-height); padding: .45rem .85rem; }
+  .player { grid-template-columns: minmax(0, 1fr); grid-template-areas: "track" "seek" "transport"; max-width: 42rem; margin: 0 auto; padding: .45rem 1.25rem calc(.55rem + env(safe-area-inset-bottom)); }
+  .player-track { min-height: 3.5rem; }
+  .player-controls { display: contents; }
+  .transport { justify-content: center; }
+  .player-volume { display: none; }
+}
+@media (max-width: 370px) {
+  .quick-tile { padding-inline: .6rem; }
+  .quick-tile-label { font-size: .76rem; }
+  .transport { gap: .3rem; }
+}
+
 /* Quiet charcoal surfaces from vaseweld, with Orbitofu's paper-simple type and blue accent. */
 :root {
   color-scheme: dark;
