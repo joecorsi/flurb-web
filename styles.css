@@ -87,6 +87,9 @@ code { color: var(--lime); font: .9em var(--mono); }
 .crumb.current { color: var(--text); }
 .crumb-separator { color: #586052; }
 .muted { color: #747b70; }
+.change-folder-button { flex: 0 0 auto; padding: .46rem .65rem; border: 1px solid var(--line); border-radius: .55rem; color: #b1b8aa; background: #171916; font: .65rem var(--mono); cursor: pointer; }
+.change-folder-button:hover:not(:disabled) { border-color: #596346; color: var(--lime); }
+.change-folder-button:disabled { cursor: default; opacity: .4; }
 .search-box { display: flex; flex: 0 0 190px; align-items: center; gap: .45rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: .55rem; color: var(--dim); }
 .search-box svg { width: .95rem; height: .95rem; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .search-box input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: .71rem; }
