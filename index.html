@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css">
-  <script src="./app.js?v=32c7766" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=folder-lock-1">
+  <script src="./app.js?v=folder-lock-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -33,18 +33,18 @@
         <div class="setup-icon" aria-hidden="true">↗</div>
         <div class="setup-content">
           <div class="setup-heading-row"><h2 id="setup-heading">Connect your Dropbox</h2><span class="setup-step">ONE TIME SETUP</span></div>
-          <p class="setup-copy">Add your Dropbox app key, then authorize Flurb to read your music files.</p>
+          <p class="setup-copy">Connect Dropbox, then choose one folder for your music library.</p>
           <div class="setup-form">
             <label class="sr-only" for="app-key">Dropbox app key</label>
             <input id="app-key" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Dropbox app key" aria-describedby="app-key-help">
             <button class="primary-button" id="setup-connect" type="button">Connect Dropbox <span aria-hidden="true">↗</span></button>
           </div>
-          <div class="setup-foot"><span id="app-key-help">Your app key stays in this browser. Flurb only asks for read access.</span><button class="text-button" id="show-help" type="button" aria-expanded="false">Where do I find it?</button></div>
+          <div class="setup-foot"><span id="app-key-help">Flurb requests read-only access and stays inside your selected folder.</span><button class="text-button" id="show-help" type="button" aria-expanded="false">Setup details</button></div>
           <div class="help-panel" id="help-panel" hidden>
             <ol>
-              <li>Create a Dropbox API app with <strong>Scoped access</strong> and enable <code>files.metadata.read</code> and <code>files.content.read</code>.</li>
-              <li>Add this page’s address to the app’s <strong>OAuth 2 → Redirect URIs</strong>.</li>
-              <li>Copy the app key from the app’s Settings page and paste it above.</li>
+              <li>Flurb uses a <strong>Full Dropbox</strong> app type so it can reach your existing music folder, with only <code>files.metadata.read</code> and <code>files.content.read</code> enabled.</li>
+              <li>Flurb’s browser UI selects one library folder, then lists and plays tracks only inside that folder and its subfolders.</li>
+              <li>Add <code>https://joecorsi.github.io/flurb-web/</code> under <strong>OAuth 2 → Redirect URIs</strong>. The app key is already filled in.</li>
             </ol>
             <p>For local development, run <code>python3 -m http.server 8080</code> from the <code>web</code> folder and use <code>http://localhost:8080/</code> as the redirect URI.</p>
           </div>
@@ -60,7 +60,8 @@
           <button class="icon-button refresh-button" id="refresh-button" type="button" aria-label="Refresh folder" title="Refresh folder" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.7 9a7 7 0 0 1 11.8-2L20 12M4 12l2.5 5a7 7 0 0 0 11.8-2"/></svg></button>
         </div>
         <div class="library-toolbar">
-          <nav class="breadcrumbs" id="breadcrumbs" aria-label="Dropbox folders"><span class="muted">Connect Dropbox to see your folders</span></nav>
+            <nav class="breadcrumbs" id="breadcrumbs" aria-label="Selected Dropbox folder"><span class="muted">Connect Dropbox to choose a folder</span></nav>
+            <button class="change-folder-button" id="change-folder-button" type="button" disabled>Change folder</button>
           <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="Search this folder" aria-label="Search tracks in this folder" disabled></label>
         </div>
         <div class="notice" id="notice" role="status" aria-live="polite"><span class="notice-mark">✳</span><span id="notice-message">Connect Dropbox to start your collection.</span></div>
