@@ -7,7 +7,7 @@
   <meta name="description" content="A simple music player for tracks in your Dropbox.">
   <title>Flurb — music from your Dropbox</title>
   <link rel="stylesheet" href="./styles.css?v=orbit-vase-1">
-  <script src="./app.js?v=folder-lock-5" defer></script>
+  <script src="./app.js?v=table-view-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -62,7 +62,11 @@
             <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="Search tracks and folders" aria-label="Search tracks and folders in this folder" disabled></label>
         </div>
         <div class="notice" id="notice" role="status" aria-live="polite"><span class="notice-mark">✳</span><span id="notice-message">Connect Dropbox to start your collection.</span></div>
-        <div class="track-list" id="track-list" aria-label="Tracks">
+        <div class="track-list" id="track-list" aria-label="Music library">
+          <table class="library-table" aria-label="Music library contents" hidden>
+            <thead><tr><th scope="col">Name</th><th scope="col" class="table-kind">Kind</th><th scope="col" class="table-size">Size</th><th scope="col" class="table-actions"><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody id="table-body"></tbody>
+          </table>
           <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true">◉</div><p>Your tracks will show up here.</p><span>Choose a folder in Dropbox to get started.</span></div>
         </div>
       </section>
