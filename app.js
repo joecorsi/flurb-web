@@ -8,15 +8,17 @@
     audio: $("#audio"), appKey: $("#app-key"), setupCard: $("#setup-card"), setupConnect: $("#setup-connect"), connectButton: $("#connect-button"),
     connectionState: $("#connection-state"), connectionLabel: $("#connection-label"), search: $("#search"), breadcrumbs: $("#breadcrumbs"),
     trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
-    refresh: $("#refresh-button"), changeFolder: $("#change-folder-button"), help: $("#show-help"), helpPanel: $("#help-panel"), player: $("#player"), play: $("#play-button"),
+    refresh: $("#refresh-button"), changeFolder: $("#change-folder-button"), recent: $("#recent-button"), recentCount: $("#recent-count"), favoritesButton: $("#favorites-button"), favoritesCount: $("#favorites-count"), player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
     elapsed: $("#elapsed-time"), duration: $("#duration-time"), nowTitle: $("#now-title"), nowAlbum: $("#now-album"), nowFavorite: $("#now-favorite"),
-    volume: $("#volume"), toast: $("#toast")
+    volume: $("#volume"), toast: $("#toast"), coverTile: $("#cover-tile")
   };
   const state = {
     appKey: localStorage.getItem("flurb.dropbox.appKey") || DEFAULT_APP_KEY,
     token: sessionStorage.getItem("flurb.dropbox.accessToken") || "",
+    loginOpen: false,
     libraryFolder: null,
+    viewMode: "library",
     folderPicker: false,
     folderPath: "",
     folderName: "All files",
@@ -28,9 +30,14 @@
     shuffle: false,
     repeat: "off",
     favorites: new Set(JSON.parse(localStorage.getItem("flurb.dropbox.favorites") || "[]")),
+    favoriteItems: new Map(),
     playRequest: 0,
     toastTimer: null
   };
+  try {
+    const savedItems = JSON.parse(localStorage.getItem("flurb.dropbox.favoriteItems") || "[]");
+    if (Array.isArray(savedItems)) state.favoriteItems = new Map(savedItems.filter((track) => track?.id).map((track) => [track.id, track]));
+  } catch (_) {}
   try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
   els.appKey.value = state.appKey;
   els.audio.volume = Number(els.volume.value);
@@ -162,6 +169,18 @@
     els.refresh.disabled = !connected;
     els.changeFolder.disabled = !connected;
     els.setupCard.classList.toggle("connected", connected);
+    if (connected) state.loginOpen = false;
+    els.setupCard.hidden = connected || !state.loginOpen;
+    document.body.classList.toggle("is-connected", connected);
+    updateQuickActions();
+  }
+  function updateQuickActions() {
+    els.recent.classList.toggle("active", state.viewMode === "recent");
+    els.recent.setAttribute("aria-pressed", String(state.viewMode === "recent"));
+    els.favoritesButton.classList.toggle("active", state.viewMode === "favorites");
+    els.favoritesButton.setAttribute("aria-pressed", String(state.viewMode === "favorites"));
+    els.recentCount.textContent = String(state.entries.length);
+    els.favoritesCount.textContent = String(state.favorites.size);
   }
   async function connectLibrary() {
     updateConnection();
@@ -194,7 +213,7 @@
     state.current = null;
     state.loadingTrack = false;
     els.nowTitle.textContent = "Nothing playing yet";
-    els.nowAlbum.textContent = "Choose a track from your collection";
+    els.nowAlbum.textContent = "";
     els.nowFavorite.disabled = true;
     updateFavoriteButton();
     updateTransport();
@@ -207,9 +226,8 @@
     state.entries = [];
     state.tracks = [];
     els.tableBody.replaceChildren();
-    els.tableBody.closest("table").hidden = false;
     els.emptyState.hidden = true;
-    showNotice("Choose the one Dropbox folder Flurb should use. Only tracks inside that folder and its subfolders will be shown.");
+    showNotice("Choose a folder");
     els.refresh.classList.add("is-spinning");
     try {
       // This one-time picker reads only top-level metadata to let the user select a folder.
@@ -242,6 +260,7 @@
     path = path || root;
     if (!(path === root || path.startsWith(`${root}/`))) throw new Error("That folder is outside the selected Flurb library.");
     if (path !== state.folderPath) els.search.value = "";
+    state.viewMode = "library";
     state.folderPicker = false;
     state.folderPath = path;
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
@@ -253,6 +272,7 @@
       const entries = await listFolder(path, false);
       state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+      updateQuickActions();
       renderBreadcrumbs();
       renderTracks();
       hideNotice();
@@ -305,36 +325,45 @@
   }
   function filteredTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
-    return state.tracks.filter((track) => !query || track.name.toLocaleLowerCase().includes(query));
+    return visibleTracks().filter((track) => !query || track.name.toLocaleLowerCase().includes(query));
+  }
+  function visibleTracks() {
+    if (state.viewMode === "favorites") {
+      const known = new Map(state.favoriteItems);
+      state.tracks.forEach((track) => { if (state.favorites.has(track.id) && !known.has(track.id)) known.set(track.id, track); });
+      return [...known.values()].filter((track) => state.favorites.has(track.id) && isInsideLibrary(track));
+    }
+    if (state.viewMode === "recent") return state.entries.filter(isAudio).sort((a, b) => new Date(b.server_modified || 0) - new Date(a.server_modified || 0));
+    return state.tracks;
   }
   function renderTracks() {
     els.tableBody.replaceChildren();
     els.emptyState.hidden = true;
     const query = els.search.value.trim().toLocaleLowerCase();
     const tracks = filteredTracks();
-    const folders = state.entries.filter(isFolder).filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
+    let folders = state.entries.filter(isFolder).filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
+    if (state.viewMode === "favorites") folders = [];
+    if (state.viewMode === "recent") folders = folders.sort((a, b) => new Date(b.server_modified || 0) - new Date(a.server_modified || 0)).slice(0, 20);
     els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"} · ${folders.length} folder${folders.length === 1 ? "" : "s"}`;
     const rows = [
       ...folders.map((folder) => ({ kind: "folder", item: folder })),
       ...tracks.map((track) => ({ kind: "track", item: track }))
-    ].sort((a, b) => a.item.name.localeCompare(b.item.name, undefined, { numeric: true, sensitivity: "base" }));
+    ].sort((a, b) => state.viewMode === "recent"
+      ? new Date(b.item.server_modified || 0) - new Date(a.item.server_modified || 0)
+      : a.item.name.localeCompare(b.item.name, undefined, { numeric: true, sensitivity: "base" }));
     if (!rows.length) {
       els.emptyState.hidden = false;
-      els.emptyState.querySelector("p").textContent = query ? "No tracks found." : "No music in this folder yet.";
-      els.emptyState.querySelector("span").textContent = query ? "Try another search." : "Use Change folder to pick another Dropbox folder.";
-      els.tableBody.closest("table").hidden = true;
+      els.emptyState.querySelector("p").textContent = query ? "No results" : state.viewMode === "favorites" ? "No favorites" : "No tracks";
+      els.emptyState.querySelector("span").textContent = "";
       return;
     }
-    els.tableBody.closest("table").hidden = false;
     rows.slice(0, state.displayLimit).forEach(({ kind, item }, index) => {
-      els.tableBody.append(kind === "folder" ? makeFolderRow(item) : makeTrackRow(item, index));
+      els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
     });
     const remaining = rows.length - state.displayLimit;
     if (remaining > 0) {
-      const row = document.createElement("tr");
+      const row = document.createElement("div");
       row.className = "table-more-row";
-      const cell = document.createElement("td");
-      cell.colSpan = 4;
       const more = document.createElement("button");
       more.type = "button";
       more.className = "show-more-button";
@@ -343,22 +372,22 @@
         state.displayLimit += 100;
         renderTracks();
       });
-      cell.append(more);
-      row.append(cell);
+      row.append(more);
       els.tableBody.append(row);
     }
   }
   function renderFolderPicker() {
     els.tableBody.replaceChildren();
     els.emptyState.hidden = true;
-    els.tableBody.closest("table").hidden = false;
     els.trackCount.textContent = "· choose one folder";
     const folders = state.entries.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-    folders.forEach((folder) => els.tableBody.append(makeFolderRow(folder)));
+    folders.forEach((folder, index) => els.tableBody.append(makeFolderRow(folder, index)));
   }
-  function makeFolderRow(folder) {
-    const row = document.createElement("tr");
-    row.className = "library-row folder-row";
+  function makeFolderRow(folder, index = 0) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "library-row folder-row artist-row";
+    row.setAttribute("aria-label", state.folderPicker ? `Select ${folder.name} as your library` : `Open ${folder.name}`);
     const leading = document.createElement("span");
     leading.className = "track-leading";
     leading.innerHTML = '<svg class="folder-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h5l2 2h8A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
@@ -369,33 +398,18 @@
     title.textContent = folder.name;
     const meta = document.createElement("span");
     meta.className = "track-meta";
-    meta.textContent = state.folderPicker ? "SELECT AS LIBRARY" : "OPEN FOLDER";
+    meta.textContent = state.folderPicker ? "SELECT FOLDER" : state.folderPath === state.libraryFolder?.path_lower ? "ARTIST" : "FOLDER";
     copy.append(title, meta);
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "folder-open";
-    open.setAttribute("aria-label", state.folderPicker ? `Select ${folder.name} as your library` : `Open ${folder.name}`);
-    open.append(leading, copy);
-    const nameCell = document.createElement("td");
-    nameCell.append(open);
-    const kindCell = document.createElement("td");
-    kindCell.className = "table-kind";
-    kindCell.textContent = "FOLDER";
-    const sizeCell = document.createElement("td");
-    sizeCell.className = "table-size table-muted";
-    sizeCell.textContent = "—";
-    const actionCell = document.createElement("td");
-    actionCell.className = "table-actions";
-    actionCell.textContent = state.folderPicker ? "SELECT" : "OPEN ↗";
-    row.append(nameCell, kindCell, sizeCell, actionCell);
-    open.addEventListener("click", () => {
+    row.append(leading, copy);
+    row.addEventListener("click", () => {
       if (state.folderPicker) selectLibraryFolder(folder).catch((e) => showNotice(friendlyError(e), "error"));
       else loadLibraryFolder(folder.path_lower, folder.name).catch((e) => showNotice(friendlyError(e), "error"));
     });
     return row;
   }
   function makeTrackRow(track, index) {
-    const row = document.createElement("tr");
+    const row = document.createElement("div");
+    row.setAttribute("role", "listitem");
     row.className = `library-row track-row${state.current?.id === track.id ? " is-playing" : ""}`;
     const leading = document.createElement("span");
     leading.className = "track-leading";
@@ -419,12 +433,6 @@
     meta.className = "track-meta";
     meta.textContent = state.folderName.toUpperCase();
     copy.append(title, meta);
-    const kind = document.createElement("td");
-    kind.className = "table-kind";
-    kind.textContent = "AUDIO";
-    const size = document.createElement("td");
-    size.className = "table-size table-muted";
-    size.textContent = formatBytes(track.size);
     const actions = document.createElement("div");
     actions.className = "track-actions";
     const favorite = document.createElement("button");
@@ -434,13 +442,7 @@
     favorite.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg>';
     favorite.addEventListener("click", () => toggleFavorite(track));
     actions.append(favorite);
-    const nameCell = document.createElement("td");
-    nameCell.className = "table-name-cell";
-    nameCell.append(leading, copy);
-    const actionsCell = document.createElement("td");
-    actionsCell.className = "table-actions";
-    actionsCell.append(actions);
-    row.append(nameCell, kind, size, actionsCell);
+    row.append(leading, copy, actions);
     row.addEventListener("dblclick", () => playTrack(track));
     return row;
   }
@@ -476,17 +478,18 @@
     }
   }
   function playNext(direction = 1) {
-    if (!state.tracks.length) return;
-    const currentIndex = state.tracks.findIndex((track) => track.id === state.current?.id);
+    const playlist = visibleTracks();
+    if (!playlist.length) return;
+    const currentIndex = playlist.findIndex((track) => track.id === state.current?.id);
     let nextIndex;
-    if (state.shuffle && direction > 0 && state.tracks.length > 1) {
-      do { nextIndex = Math.floor(Math.random() * state.tracks.length); } while (nextIndex === currentIndex);
+    if (state.shuffle && direction > 0 && playlist.length > 1) {
+      do { nextIndex = Math.floor(Math.random() * playlist.length); } while (nextIndex === currentIndex);
     } else if (currentIndex < 0) {
-      nextIndex = direction > 0 ? 0 : state.tracks.length - 1;
+      nextIndex = direction > 0 ? 0 : playlist.length - 1;
     } else {
-      nextIndex = (currentIndex + direction + state.tracks.length) % state.tracks.length;
+      nextIndex = (currentIndex + direction + playlist.length) % playlist.length;
     }
-    playTrack(state.tracks[nextIndex]);
+    playTrack(playlist[nextIndex]);
   }
   function updateTransport() {
     const hasTrack = Boolean(state.current);
@@ -503,10 +506,17 @@
     els.nowFavorite.setAttribute("aria-label", active ? "Remove current track from favorites" : "Favorite current track");
   }
   function toggleFavorite(track) {
-    if (state.favorites.has(track.id)) state.favorites.delete(track.id);
-    else state.favorites.add(track.id);
+    if (state.favorites.has(track.id)) {
+      state.favorites.delete(track.id);
+      state.favoriteItems.delete(track.id);
+    } else {
+      state.favorites.add(track.id);
+      state.favoriteItems.set(track.id, track);
+    }
     localStorage.setItem("flurb.dropbox.favorites", JSON.stringify([...state.favorites]));
+    localStorage.setItem("flurb.dropbox.favoriteItems", JSON.stringify([...state.favoriteItems.values()]));
     updateFavoriteButton();
+    updateQuickActions();
     renderTracks();
   }
   function formatTime(seconds) {
@@ -534,15 +544,14 @@
   els.setupConnect.addEventListener("click", startOAuth);
   els.connectButton.addEventListener("click", () => {
     if (state.token) return startOAuth();
+    state.loginOpen = true;
+    els.setupCard.hidden = false;
     els.setupCard.scrollIntoView({ behavior: "smooth", block: "center" });
     els.appKey.focus({ preventScroll: true });
   });
-  els.help.addEventListener("click", () => {
-    const expanded = els.help.getAttribute("aria-expanded") === "true";
-    els.help.setAttribute("aria-expanded", String(!expanded));
-    els.helpPanel.hidden = expanded;
-  });
   els.search.addEventListener("input", () => { state.displayLimit = 100; renderTracks(); });
+  els.recent.addEventListener("click", () => { state.viewMode = "recent"; updateQuickActions(); renderTracks(); });
+  els.favoritesButton.addEventListener("click", () => { state.viewMode = "favorites"; updateQuickActions(); renderTracks(); });
   els.refresh.addEventListener("click", () => {
     if (state.folderPicker) openFolderPicker();
     else loadLibraryFolder(state.folderPath, state.folderName).catch((e) => showNotice(friendlyError(e), "error"));
@@ -584,7 +593,7 @@
   els.audio.addEventListener("pause", () => { updateTransport(); renderTracks(); });
   els.audio.addEventListener("ended", () => {
     if (state.repeat === "one") { els.audio.currentTime = 0; els.audio.play(); }
-    else if (state.repeat === "all" || state.shuffle || state.tracks.findIndex((t) => t.id === state.current?.id) < state.tracks.length - 1) playNext(1);
+    else if (state.repeat === "all" || state.shuffle || visibleTracks().findIndex((t) => t.id === state.current?.id) < visibleTracks().length - 1) playNext(1);
     else updateTransport();
   });
   els.audio.addEventListener("error", () => {
