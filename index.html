@@ -20,54 +20,40 @@
     </header>
 
     <main id="top">
-      <section class="intro" aria-labelledby="page-title">
-        <div class="eyebrow"><span class="eyebrow-line"></span> YOUR MUSIC, YOUR CLOUD</div>
-        <h1 id="page-title">A little room<br>for <em>your records.</em></h1>
-        <p class="intro-copy">A simple player for the music you keep in Dropbox. Connect your library, pick a track, and settle in.</p>
-      </section>
-
-      <section class="setup-card" id="setup-card" aria-labelledby="setup-heading">
-        <div class="setup-icon" aria-hidden="true">↗</div>
+      <section class="setup-card" id="setup-card" aria-labelledby="setup-heading" hidden>
         <div class="setup-content">
-          <div class="setup-heading-row"><h2 id="setup-heading">Connect your Dropbox</h2><span class="setup-step">ONE TIME SETUP</span></div>
-          <p class="setup-copy">Connect Dropbox, then choose one folder for your music library.</p>
+          <h2 class="sr-only" id="setup-heading">Dropbox connection</h2>
           <div class="setup-form">
             <label class="sr-only" for="app-key">Dropbox app key</label>
             <input id="app-key" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Dropbox app key" aria-describedby="app-key-help">
             <button class="primary-button" id="setup-connect" type="button">Connect Dropbox <span aria-hidden="true">↗</span></button>
           </div>
-          <div class="setup-foot"><span id="app-key-help">Full Dropbox read-only access; Flurb shows music from your selected folder.</span><button class="text-button" id="show-help" type="button" aria-expanded="false">Setup details</button></div>
-          <div class="help-panel" id="help-panel" hidden>
-            <ol>
-              <li>Flurb uses a <strong>Full Dropbox</strong> app type so it can reach your existing music folder, with only <code>files.metadata.read</code> and <code>files.content.read</code> enabled.</li>
-              <li>Flurb’s browser UI selects one library folder, then lists and plays tracks only inside that folder and its subfolders.</li>
-              <li>Add <code>https://joecorsi.github.io/flurb-web/</code> under <strong>OAuth 2 → Redirect URIs</strong>. The app key is already filled in.</li>
-            </ol>
-            <p>For local development, run <code>python3 -m http.server 8080</code> from the <code>web</code> folder and use <code>http://localhost:8080/</code> as the redirect URI.</p>
-          </div>
         </div>
       </section>
 
       <section class="library" aria-labelledby="library-heading">
-        <div class="library-heading-row">
-          <div>
-            <div class="eyebrow library-eyebrow"><span class="eyebrow-line"></span> YOUR DROPBOX</div>
-            <h2 id="library-heading">The collection<span class="track-count" id="track-count"></span></h2>
+        <div class="library-sticky" id="library-sticky">
+          <div class="quick-actions" role="group" aria-label="Library views">
+            <button class="quick-tile" id="recent-button" type="button" aria-pressed="false">
+              <span class="quick-tile-label">Recently added</span><span class="quick-tile-count" id="recent-count">0</span><span class="quick-tile-icon" aria-hidden="true">↗</span>
+            </button>
+            <button class="quick-tile" id="favorites-button" type="button" aria-pressed="false">
+              <span class="quick-tile-label">Favorites</span><span class="quick-tile-count" id="favorites-count">0</span><span class="quick-tile-icon heart" aria-hidden="true">♡</span>
+            </button>
           </div>
-          <button class="icon-button refresh-button" id="refresh-button" type="button" aria-label="Refresh folder" title="Refresh folder" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.7 9a7 7 0 0 1 11.8-2L20 12M4 12l2.5 5a7 7 0 0 0 11.8-2"/></svg></button>
+          <div class="search-row">
+            <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="Search" aria-label="Search tracks and artists" disabled></label>
+            <button class="icon-button refresh-button" id="refresh-button" type="button" aria-label="Refresh folder" title="Refresh folder" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.7 9a7 7 0 0 1 11.8-2L20 12M4 12l2.5 5a7 7 0 0 0 11.8-2"/></svg></button>
+            <button class="change-folder-button" id="change-folder-button" type="button" disabled>Folder</button>
+          </div>
+          <nav class="breadcrumbs" id="breadcrumbs" aria-label="Selected Dropbox folder"><span class="muted">Library</span></nav>
         </div>
-        <div class="library-toolbar">
-            <nav class="breadcrumbs" id="breadcrumbs" aria-label="Selected Dropbox folder"><span class="muted">Connect Dropbox to choose a folder</span></nav>
-            <button class="change-folder-button" id="change-folder-button" type="button" disabled>Change folder</button>
-            <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="Search tracks and folders" aria-label="Search tracks and folders in this folder" disabled></label>
-        </div>
-        <div class="notice" id="notice" role="status" aria-live="polite"><span class="notice-mark">✳</span><span id="notice-message">Connect Dropbox to start your collection.</span></div>
+        <h2 class="sr-only" id="library-heading">Music library</h2>
+        <span class="track-count sr-only" id="track-count"></span>
+        <div class="notice" id="notice" role="status" aria-live="polite"><span class="notice-mark">✳</span><span id="notice-message"></span></div>
         <div class="track-list" id="track-list" aria-label="Music library">
-          <table class="library-table" aria-label="Music library contents" hidden>
-            <thead><tr><th scope="col">Name</th><th scope="col" class="table-kind">Kind</th><th scope="col" class="table-size">Size</th><th scope="col" class="table-actions"><span class="sr-only">Actions</span></th></tr></thead>
-            <tbody id="table-body"></tbody>
-          </table>
-          <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true">◉</div><p>Your tracks will show up here.</p><span>Choose a folder in Dropbox to get started.</span></div>
+          <div class="track-rows" id="table-body" role="list"></div>
+          <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true">◉</div><p>No tracks</p><span></span></div>
         </div>
       </section>
     </main>
@@ -75,7 +61,7 @@
     <footer class="player" id="player" aria-label="Audio player">
       <div class="player-track">
         <div class="cover-tile" id="cover-tile" aria-hidden="true"><span class="cover-orbit orbit-one"></span><span class="cover-orbit orbit-two"></span><span class="cover-center"></span></div>
-        <div class="now-playing"><span class="now-label">NOW PLAYING</span><strong id="now-title">Nothing playing yet</strong><span id="now-album">Choose a track from your collection</span></div>
+        <div class="now-playing"><span class="now-label">NOW PLAYING</span><strong id="now-title">Nothing playing yet</strong><span id="now-album"></span></div>
         <button class="icon-button favorite-button" id="now-favorite" type="button" aria-label="Favorite current track" title="Favorite current track" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg></button>
       </div>
       <div class="player-controls">
