@@ -46,7 +46,7 @@
     const text = String(error?.message || error || "Something went wrong.");
     if (/expired_access_token|invalid_access_token|401/i.test(text)) return "Your Dropbox session expired. Connect again to keep listening.";
     if (/missing_scope|insufficient_scope/i.test(text)) return "This Dropbox app needs files.metadata.read and files.content.read permissions. Save the permissions, then reconnect.";
-    if (/path/not_found/i.test(text)) return "That folder is no longer available. Go back to your Dropbox files.";
+    if (/path\/not_found/i.test(text)) return "That folder is no longer available. Go back to your Dropbox files.";
     return text;
   }
   async function dropbox(path, body = {}) {
