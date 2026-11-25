@@ -22,6 +22,7 @@
     folderName: "All files",
     entries: [],
     tracks: [],
+    displayLimit: 100,
     current: null,
     loadingTrack: false,
     shuffle: false,
@@ -201,6 +202,8 @@
     els.search.disabled = true;
     state.folderPath = "";
     state.folderName = "Choose a folder";
+    state.displayLimit = 100;
+    els.search.value = "";
     state.entries = [];
     state.tracks = [];
     els.trackList.replaceChildren();
@@ -239,6 +242,7 @@
     state.folderPicker = false;
     state.folderPath = path;
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
+    state.displayLimit = 100;
     showNotice(`Loading ${state.folderName}…`);
     els.refresh.classList.add("is-spinning");
     try {
@@ -298,22 +302,36 @@
   }
   function filteredTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
-    return state.tracks.filter((track) => !query || track.name.toLocaleLowerCase().includes(query) || track.path_lower.toLocaleLowerCase().includes(query));
+    return state.tracks.filter((track) => !query || track.name.toLocaleLowerCase().includes(query));
   }
   function renderTracks() {
     els.trackList.replaceChildren();
     const query = els.search.value.trim().toLocaleLowerCase();
     const tracks = filteredTracks();
     const folders = state.entries.filter(isFolder).filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
-    els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"}`;
+    els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"} · ${folders.length} folder${folders.length === 1 ? "" : "s"}`;
     if (!tracks.length && !folders.length) {
       els.trackList.append(els.emptyState);
       els.emptyState.querySelector("p").textContent = query ? "No tracks found." : "No music in this folder yet.";
       els.emptyState.querySelector("span").textContent = query ? "Try another search." : "Use Change folder to pick another Dropbox folder.";
       return;
     }
-    folders.forEach((folder) => els.trackList.append(makeFolderRow(folder)));
-    tracks.forEach((track, index) => els.trackList.append(makeTrackRow(track, index)));
+    const visibleFolders = folders.slice(0, state.displayLimit);
+    visibleFolders.forEach((folder) => els.trackList.append(makeFolderRow(folder)));
+    const trackLimit = Math.max(0, state.displayLimit - visibleFolders.length);
+    tracks.slice(0, trackLimit).forEach((track, index) => els.trackList.append(makeTrackRow(track, index)));
+    const remaining = folders.length + tracks.length - state.displayLimit;
+    if (remaining > 0) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "show-more-button";
+      more.textContent = `Show ${Math.min(100, remaining)} more (${remaining} left)`;
+      more.addEventListener("click", () => {
+        state.displayLimit += 100;
+        renderTracks();
+      });
+      els.trackList.append(more);
+    }
   }
   function renderFolderPicker() {
     els.trackList.replaceChildren();
@@ -487,7 +505,7 @@
     els.help.setAttribute("aria-expanded", String(!expanded));
     els.helpPanel.hidden = expanded;
   });
-  els.search.addEventListener("input", renderTracks);
+  els.search.addEventListener("input", () => { state.displayLimit = 100; renderTracks(); });
   els.refresh.addEventListener("click", () => {
     if (state.folderPicker) openFolderPicker();
     else loadLibraryFolder(state.folderPath, state.folderName).catch((e) => showNotice(friendlyError(e), "error"));
