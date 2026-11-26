@@ -947,3 +947,15 @@ body.is-embedded .settings-back { display: none; }
   padding: 0;
 }
 .track-artwork-shell, .folder-leading { align-self: center !important; justify-self: start; margin: 0; }
+
+/* Restore the flat, left-to-right row layout while keeping square tiles centered. */
+.track-row, .folder-row {
+  display: flex !important;
+  align-items: center !important;
+  height: var(--search-row-height);
+  min-height: var(--search-row-height);
+  padding: 2px 0;
+}
+.track-artwork-shell { grid-area: auto; align-self: center !important; }
+.track-row .track-copy { flex: 1 1 auto; min-width: 0; }
+.folder-row .track-copy { flex: 1 1 auto; min-width: 0; }
