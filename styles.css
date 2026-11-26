@@ -692,3 +692,8 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .player-loading { display: inline-flex; width: 1rem; height: 1rem; align-items: center; justify-content: center; vertical-align: middle; }
 .player-loading i { width: .8rem; height: .8rem; border: 2px solid #858585; border-right-color: #f3f3f3; border-radius: 50%; animation: player-loading-spin .7s linear infinite; }
 @keyframes player-loading-spin { to { transform: rotate(360deg); } }
+:root { --page-gutter: clamp(14px, 4vw, 24px); }
+.library-sticky { padding-inline: var(--page-gutter); }
+.track-list { padding-inline: var(--page-gutter); }
+.notice { margin-inline: var(--page-gutter); }
+.player { padding-inline: var(--page-gutter); }
