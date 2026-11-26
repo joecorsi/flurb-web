@@ -977,3 +977,15 @@ body.is-embedded .settings-back { display: none; }
 .breadcrumbs-path::-webkit-scrollbar { display: none; }
 html, body { touch-action: pan-x pan-y; }
 .breadcrumbs-path { overscroll-behavior-x: contain; }
+
+/* Keep both sticky control rows the same 44px square height as artwork. */
+:root { --top-row-height: 44px; }
+.search-row, .action-row { height: var(--top-row-height); min-height: var(--top-row-height); }
+.search-box, .home-button, .settings-button, .mode-select {
+  height: var(--top-row-height);
+  min-height: var(--top-row-height);
+}
+.home-button, .settings-button {
+  flex-basis: var(--top-row-height);
+  width: var(--top-row-height);
+}
