@@ -769,3 +769,39 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
   .transport .icon-button { width: 100%; }
   .transport .play-button { width: 2.8rem; height: 2.8rem; }
 }
+
+/* Two aligned control rows: search/home above settings/view selector. */
+.action-row { display: flex; width: 100%; align-items: center; gap: var(--top-control-gap); }
+.mode-picker { flex: 1 1 auto; width: auto; min-width: 0; margin-left: 0; }
+.mode-select { height: var(--search-row-height); }
+.breadcrumbs { width: 100%; margin-left: 0; }
+.settings-button svg { width: 1.35rem; height: 1.35rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.home-button svg { width: 1.35rem; height: 1.35rem; }
+.library-sticky { position: sticky; }
+.track-list { padding: .25rem 0 1rem; }
+.track-rows { gap: 0; }
+.library-row { min-height: var(--search-row-height); padding: .4rem .25rem; border: 0; border-bottom: 1px solid #303235; border-radius: 0; background: transparent; }
+.library-row:hover { border-color: #303235; background: #ffffff08; }
+.track-row { grid-template-columns: 2.75rem minmax(0, 1fr) auto; min-height: 3.7rem; gap: .65rem; padding: .4rem .25rem; }
+.track-row.is-playing { border-color: #303235; background: #ffffff08; }
+.track-row .track-artwork { width: 2.75rem; height: 2.75rem; }
+.track-actions { gap: .15rem; }
+.track-actions .icon-button { width: 2.15rem; height: 2.15rem; }
+.track-actions .icon-button svg { width: 1.1rem; height: 1.1rem; }
+.track-overflow { position: relative; }
+.track-overflow-menu { position: absolute; z-index: 20; top: calc(100% + .2rem); right: 0; width: max-content; min-width: 12rem; overflow: hidden; border: 1px solid #3a3c3f; border-radius: 4px; background: #1c1e20; box-shadow: 0 10px 24px #0009; }
+.track-overflow-menu[hidden] { display: none; }
+.track-overflow-menu button { display: block; width: 100%; min-height: 2.8rem; padding: .65rem .8rem; border: 0; color: #e5e5e5; background: transparent; text-align: left; font: 500 .78rem var(--sans); cursor: pointer; }
+.track-overflow-menu button + button { border-top: 1px solid #343638; }
+.track-overflow-menu button:hover { background: #282a2d; }
+.playlist-create { justify-content: flex-start; color: #aaa; font-size: .85rem; }
+.playlist-row .track-copy { width: 100%; }
+@media (min-width: 700px) {
+  .library-sticky { padding-inline: var(--page-gutter); }
+  .track-list { padding-inline: 0; }
+  .track-rows { gap: 0; }
+  .track-row { min-height: 4rem; }
+}
+.playlist-submenu { max-height: 13rem; overflow-y: auto; border-block: 1px solid #343638; background: #151617; }
+.playlist-submenu[hidden] { display: none !important; }
+.playlist-submenu button { padding-left: 1.35rem; color: #bfc0c1; font-size: .73rem; }
