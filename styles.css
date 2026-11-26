@@ -1060,3 +1060,25 @@ html, body { touch-action: pan-x pan-y; }
 .artwork-viewer-cover > .artwork-placeholder { width: 72px; height: 72px; color: #9a9999; }
 .artwork-viewer-close { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); }
 .artwork-viewer-close:hover:not(:disabled) { transform: translateX(-50%); }
+
+/* Align player cover to the list's 10px artwork column beside the track info. */
+.player { grid-template-areas: "track" "seek" "transport"; }
+.player-track {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-areas: "cover info favorite";
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  flex-direction: initial;
+  justify-content: initial;
+  padding: 0;
+  text-align: center;
+}
+.player-artwork-button { grid-area: cover; align-self: center; justify-self: start; }
+.now-playing { grid-area: info; width: 100%; min-width: 0; align-items: center; }
+.favorite-button { position: static; grid-area: favorite; width: 44px; height: 44px; justify-self: end; transform: none; }
+.favorite-button:hover:not(:disabled) { transform: none; }
+.player-controls { display: contents !important; }
+.scrubber-row { grid-area: seek; width: 100%; }
+.transport { grid-area: transport; }
