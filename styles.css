@@ -863,3 +863,32 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 body.is-embedded .settings-back { display: none; }
 
 .track-list { padding-left: 10px; }
+
+/* Keep transport presses quiet: only the glyph changes color. */
+#previous-button, #next-button,
+#previous-button:hover:not(:disabled), #next-button:hover:not(:disabled),
+#previous-button:active, #next-button:active,
+#previous-button:focus, #next-button:focus,
+#previous-button:focus-visible, #next-button:focus-visible {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+#previous-button:active:not(:disabled), #next-button:active:not(:disabled) { color: #fff; }
+
+/* Rows stay flat while their divider reaches both screen edges. */
+.library-row { position: relative; border-bottom-color: transparent; }
+.library-row::after { position: absolute; right: 0; bottom: 0; left: -10px; height: 1px; background: #303235; content: ""; pointer-events: none; }
+.library-row,
+.library-row:hover,
+.library-row:active,
+.library-row:focus,
+.library-row:focus-visible,
+.library-row.is-playing {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+.track-row.is-playing .track-name { color: #e6e9df; }
