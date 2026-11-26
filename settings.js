@@ -57,6 +57,7 @@
       sessionStorage.removeItem(key);
     });
     els.connect.textContent = "Reconnect Dropbox";
+    els.connect.classList.remove("is-select-folder");
   }
   async function ensureAccessToken(force = false) {
     if (!force && token && (!tokenExpiresAt || Date.now() < tokenExpiresAt - 60_000)) return token;
@@ -150,14 +151,16 @@
     refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
     tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
     if (!token) return;
-    els.connect.textContent = "Change music folder";
+    els.connect.textContent = "Select music folder";
+    els.connect.classList.add("is-select-folder");
     listRootFolders();
   });
   token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
   if (token) {
     let selected = null;
     try { selected = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
-    els.connect.textContent = selected?.name ? "Change music folder" : "Choose music folder";
+    els.connect.textContent = "Select music folder";
+    els.connect.classList.add("is-select-folder");
     if (selected?.name) status(`${selected.name} selected`);
     const justConnected = new URLSearchParams(location.search).get("connected") === "1";
     if (justConnected || !selected?.name) {
