@@ -8,7 +8,7 @@
   }
   const els = {
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
-    settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), emptyGlyph: $(".empty-glyph"),
+    settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), nowTitleViewport: $("#now-title-viewport"), emptyGlyph: $(".empty-glyph"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
     recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
     playlistsOption: $('[data-view="playlists"]'), playlistsCount: $("#playlists-count"), libraryOption: $('[data-view="library"]'),
@@ -197,6 +197,20 @@
     els.nowAlbum.textContent = playerArtist(track);
     updateMediaMetadata(track);
   }
+  function updateTitleMarquee() {
+    const viewport = els.nowTitleViewport;
+    const title = els.nowTitle;
+    viewport.classList.remove("is-overflowing");
+    title.style.width = "100%";
+    title.style.removeProperty("transform");
+    requestAnimationFrame(() => {
+      const distance = Math.max(0, title.scrollWidth - viewport.clientWidth);
+      if (distance > 2) {
+        viewport.style.setProperty("--title-overflow", `-${distance}px`);
+        viewport.classList.add("is-overflowing");
+      } else viewport.style.removeProperty("--title-overflow");
+    });
+  }
   function goBackOneFolder() {
     if (state.viewMode === "playlists" && state.activePlaylistId) {
       state.activePlaylistId = null;
@@ -345,19 +359,21 @@
     const scroller = document.createElement("span");
     scroller.className = "breadcrumbs-path";
     els.breadcrumbs.append(scroller);
-    const addCrumb = (name, current, onClick) => {
-      if (scroller.childElementCount) {
-        const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; divider.setAttribute("aria-hidden", "true"); scroller.append(divider);
-      }
-      const crumb = document.createElement("button"); crumb.type = "button"; crumb.className = `breadcrumb${current ? " current" : ""}`; crumb.textContent = name;
+    const rootLabel = state.viewMode === "recent" ? "recent" : state.viewMode === "favorites" ? "favorites" : state.viewMode === "playlists" ? "playlists" : "lib";
+    const addCrumb = (name, current, onClick, depth = 0, isRoot = false) => {
+      const crumb = document.createElement("button");
+      crumb.type = "button";
+      crumb.className = `breadcrumb${isRoot ? " breadcrumb-root" : ""}${current ? " current" : ""}`;
+      crumb.textContent = name;
+      crumb.style.setProperty("--breadcrumb-opacity", String(Math.max(0.1, 1 - depth * 0.15)));
       if (current) crumb.setAttribute("aria-current", "page");
       crumb.addEventListener("click", onClick);
       scroller.append(crumb);
     };
     if (state.viewMode === "playlists") {
       const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
-      addCrumb("Playlists", !playlist, goHomeLibrary);
-      if (playlist) addCrumb(playlist.name, true, goHomeLibrary);
+      addCrumb(rootLabel, !playlist, goHomeLibrary, 0, true);
+      if (playlist) addCrumb(playlist.name, true, goHomeLibrary, 1);
       return;
     }
     const root = state.libraryFolder?.path_lower;
@@ -365,10 +381,10 @@
     const rootCrumb = { path: root, name: state.libraryFolder.name };
     const folders = [rootCrumb, ...state.folderHistory, ...(state.folderPath && state.folderPath !== root ? [{ path: state.folderPath, name: state.folderName }] : [])]
       .filter((item, index, all) => item.path && (index === 0 || item.path.startsWith(`${root}/`)) && all.findIndex((entry) => entry.path === item.path) === index);
-    folders.forEach((item, index) => addCrumb(item.name, index === folders.length - 1, index === 0 ? goHomeLibrary : () => {
+    folders.forEach((item, index) => addCrumb(index === 0 ? rootLabel : item.name, index === folders.length - 1, index === 0 ? goHomeLibrary : () => {
       state.folderHistory = folders.slice(1, index).map(({ path: folderPath, name }) => ({ path: folderPath, name }));
       loadLibraryFolder(item.path, item.name).catch((error) => showNotice(friendlyError(error), "error"));
-    }));
+    }, index, index === 0));
     scroller.scrollLeft = scroller.scrollWidth;
   }
   function setLibraryLoading(loading) {
@@ -541,6 +557,7 @@
     state.current = null;
     state.loadingTrack = false;
     els.nowTitle.textContent = "Nothing playing yet";
+    updateTitleMarquee();
     els.nowAlbum.textContent = "";
     els.nowFavorite.disabled = true;
     updateFavoriteButton();
@@ -840,6 +857,7 @@
     state.loadingTrack = true;
     state.current = track;
     els.nowTitle.textContent = track.name.replace(/\.[^.]+$/, "");
+    updateTitleMarquee();
     setPlayerMetadata(track);
     if (state.loadingTrack) els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
     els.nowFavorite.disabled = false;
@@ -994,6 +1012,7 @@
   els.settingsOverlay.querySelector("[data-close-settings]").addEventListener("click", closeSettings);
   els.settingsOverlay.addEventListener("click", (event) => { if (event.target === els.settingsOverlay) closeSettings(); });
   els.nowPlayingLink.addEventListener("click", () => { if (state.current) showAlbumInLibrary(state.current); });
+  window.addEventListener("resize", updateTitleMarquee);
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "flurb-library-selected") return;
     try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) { state.libraryFolder = null; }
