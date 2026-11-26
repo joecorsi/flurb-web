@@ -19,6 +19,8 @@
     folderPath: "",
     folderName: "All files",
     folderHistory: [],
+    folderCache: new Map(),
+    navigationRequest: 0,
     entries: [],
     tracks: [],
     displayLimit: 100,
@@ -131,7 +133,8 @@
       return true;
     }
     let pending;
-    try { pending = JSON.parse(sessionStorage.getItem("flurb.dropbox.pkce") || "null"); } catch (_) {}
+    try { pending = JSON.parse(localStorage.getItem("flurb.dropbox.pkce") || sessionStorage.getItem("flurb.dropbox.pkce") || "null"); } catch (_) {}
+    localStorage.removeItem("flurb.dropbox.pkce");
     sessionStorage.removeItem("flurb.dropbox.pkce");
     if (!pending || params.get("state") !== pending.csrf) {
       showNotice("Dropbox sign-in could not be verified.", "error");
@@ -145,6 +148,11 @@
       state.token = result.access_token;
       localStorage.setItem("flurb.dropbox.accessToken", state.token);
       sessionStorage.setItem("flurb.dropbox.accessToken", state.token);
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: "flurb-dropbox-connected" }, location.origin);
+        window.close();
+        return true;
+      }
       location.replace(new URL("./settings.html?connected=1", location.href).href);
     } catch (error) {
       showNotice(friendlyError(error), "error");
@@ -184,6 +192,7 @@
     return AUDIO_EXTENSIONS.has(extension);
   };
   async function openFolderPicker() {
+    state.navigationRequest += 1;
     els.audio.pause();
     els.audio.removeAttribute("src");
     els.audio.load();
@@ -221,6 +230,7 @@
     localStorage.setItem("flurb.dropbox.libraryFolder", JSON.stringify(state.libraryFolder));
     state.folderPicker = false;
     state.folderHistory = [];
+    state.folderCache.clear();
     updateConnection();
     await loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name);
   }
@@ -233,22 +243,34 @@
     const root = state.libraryFolder.path_lower;
     path = path || root;
     if (!(path === root || path.startsWith(`${root}/`))) throw new Error("That folder is outside the selected Flurb library.");
+    const request = ++state.navigationRequest;
     if (path !== state.folderPath) els.search.value = "";
     state.viewMode = "library";
     state.folderPicker = false;
     state.folderPath = path;
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
     state.displayLimit = 100;
+    if (state.folderCache.has(path)) {
+      state.entries = state.folderCache.get(path);
+      state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+      updateQuickActions();
+      renderTracks();
+      hideNotice();
+      return;
+    }
     try {
       // Browse one level at a time. Every request is checked against the one selected library root.
       const entries = await listFolder(path, false);
+      if (request !== state.navigationRequest) return;
       state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
+      state.folderCache.set(path, state.entries);
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       updateQuickActions();
       renderTracks();
       hideNotice();
       if (!state.tracks.length && !state.entries.some(isFolder)) showNotice("No playable tracks found in this folder.");
     } catch (error) {
+      if (request !== state.navigationRequest) return;
       const message = friendlyError(error);
       if (/no longer available/i.test(message)) {
         state.libraryFolder = null;
@@ -540,20 +562,6 @@
   els.audio.addEventListener("error", () => {
     if (state.current && !els.audio.paused) showNotice("The audio stream was interrupted. Try playing the track again.", "error");
   });
-
-  let edgeSwipe = null;
-  document.addEventListener("pointerdown", (event) => {
-    if (event.pointerType !== "touch" || event.clientX > 28) return;
-    edgeSwipe = { x: event.clientX, y: event.clientY };
-  }, { passive: true });
-  document.addEventListener("pointerup", (event) => {
-    if (!edgeSwipe) return;
-    const deltaX = event.clientX - edgeSwipe.x;
-    const deltaY = event.clientY - edgeSwipe.y;
-    edgeSwipe = null;
-    if (deltaX > 75 && Math.abs(deltaY) < 65 && state.folderPath !== state.libraryFolder?.path_lower) history.back();
-  }, { passive: true });
-  document.addEventListener("pointercancel", () => { edgeSwipe = null; }, { passive: true });
 
   installHistoryNavigation();
   updateConnection();
