@@ -370,7 +370,13 @@
       const crumb = document.createElement("button");
       crumb.type = "button";
       crumb.className = `breadcrumb${isRoot ? " breadcrumb-root" : ""}${current ? " current" : ""}`;
-      crumb.textContent = name;
+      if (isRoot && state.viewMode === "favorites") {
+        crumb.innerHTML = '<i data-lucide="heart" aria-hidden="true"></i>';
+        crumb.setAttribute("aria-label", "Favorites");
+        crumb.title = "Favorites";
+      } else {
+        crumb.textContent = name;
+      }
       const distanceFromCurrent = state.viewMode === "playlists" ? (current ? 0 : 1) : Math.max(0, foldersDepth - depth);
       const opacity = Math.max(0.1, 1 - distanceFromCurrent * 0.15);
       crumb.style.setProperty("--breadcrumb-opacity", String(opacity));
@@ -381,6 +387,7 @@
         onClick();
       });
       scroller.append(crumb);
+      if (isRoot && state.viewMode === "favorites") renderLucideIcons(crumb);
     };
     if (state.viewMode === "playlists") {
       const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
