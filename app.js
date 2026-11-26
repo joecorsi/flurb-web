@@ -515,6 +515,7 @@
     if (cached) {
       image.src = cached;
       image.classList.add("has-artwork");
+      image.parentElement?.classList.add("has-artwork");
       return;
     }
     if (!state.artworkObserver && "IntersectionObserver" in window) {
@@ -547,6 +548,7 @@
         state.artworkElements.get(track.id)?.forEach((image) => {
           image.src = objectUrl;
           image.classList.add("has-artwork");
+          image.parentElement?.classList.add("has-artwork");
         });
         if (state.current?.id === track.id) updateMediaMetadata(track);
       }).catch(() => {}).finally(() => {
@@ -775,7 +777,7 @@
     row.className = "library-row folder-row artist-row";
     row.setAttribute("aria-label", state.folderPicker ? `Select ${folder.name} as your library` : `Open ${folder.name}`);
     const leading = document.createElement("span");
-    leading.className = "track-leading";
+    leading.className = "track-leading folder-leading";
     leading.innerHTML = '<i class="folder-icon" data-lucide="folder" aria-hidden="true"></i>';
     const copy = document.createElement("span");
     copy.className = "track-copy";
@@ -805,11 +807,18 @@
     row.setAttribute("tabindex", "0");
     row.setAttribute("aria-label", `Play ${track.name.replace(/\.[^.]+$/, "")}`);
     row.className = `library-row track-row${state.current?.id === track.id ? " is-playing" : ""}`;
+    const artworkShell = document.createElement("span");
+    artworkShell.className = "track-artwork-shell";
     const artwork = document.createElement("img");
     artwork.className = "track-artwork";
     artwork.alt = "";
     artwork.width = 44;
     artwork.height = 44;
+    const placeholder = document.createElement("i");
+    placeholder.className = "artwork-placeholder";
+    placeholder.setAttribute("data-lucide", "music-2");
+    placeholder.setAttribute("aria-hidden", "true");
+    artworkShell.append(artwork, placeholder);
     if (hasId3ArtworkSupport(track)) registerTrackArtwork(artwork, track);
     const copy = document.createElement("div");
     copy.className = "track-copy";
@@ -844,7 +853,7 @@
     menu.append(add, submenu, album); more.addEventListener("click", (event) => { event.stopPropagation(); document.querySelectorAll(".track-overflow-menu").forEach((other) => { if (other !== menu) other.hidden = true; }); menu.hidden = !menu.hidden; });
     overflow.append(more, menu);
     actions.append(favorite, overflow);
-    row.append(artwork, copy, actions);
+    row.append(artworkShell, copy, actions);
     row.addEventListener("click", (event) => {
       if (!event.target.closest("button")) playTrack(track);
     });
