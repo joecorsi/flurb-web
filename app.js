@@ -376,7 +376,10 @@
       crumb.style.setProperty("--breadcrumb-opacity", String(opacity));
       if (opacity < 0.45) crumb.classList.add("is-dark");
       if (current) crumb.setAttribute("aria-current", "page");
-      crumb.addEventListener("click", onClick);
+      crumb.addEventListener("click", () => {
+        if (!els.artworkViewer.hidden) closeArtworkViewer();
+        onClick();
+      });
       scroller.append(crumb);
     };
     if (state.viewMode === "playlists") {
