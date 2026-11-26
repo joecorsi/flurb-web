@@ -6,6 +6,8 @@
   const els = {
     connect: document.querySelector("#settings-connect"),
     library: document.querySelector("#settings-library"),
+    libraryToggle: document.querySelector("#settings-library-toggle"),
+    currentFolder: document.querySelector("#settings-current-folder"),
     folders: document.querySelector("#settings-folders"),
     status: document.querySelector("#settings-status"),
     account: document.querySelector("#dropbox-account"),
@@ -18,6 +20,19 @@
   let refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
   let tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
   let refreshPromise = null;
+  let foldersLoaded = false;
+
+  function setFolderListOpen(open) {
+    els.folders.hidden = !open;
+    els.libraryToggle.setAttribute("aria-expanded", String(open));
+    els.libraryToggle.classList.toggle("is-open", open);
+  }
+  function updateSelectedFolder() {
+    let selected = null;
+    try { selected = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
+    els.currentFolder.textContent = selected?.name || "No folder selected";
+    return selected;
+  }
 
   function status(message, error = false) {
     els.status.textContent = message;
@@ -115,7 +130,9 @@
   }
   async function listRootFolders() {
     els.library.hidden = false;
+    setFolderListOpen(true);
     els.folders.replaceChildren();
+    foldersLoaded = false;
     status("Loading folders…");
     try {
       let response = await dropbox("/files/list_folder", { path: "", recursive: false, include_deleted: false });
@@ -125,6 +142,7 @@
         folders.push(...(response.entries || []).filter((entry) => entry[".tag"] === "folder"));
       }
       folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+      foldersLoaded = true;
       if (!folders.length) {
         status("No folders found.");
         return;
@@ -137,6 +155,8 @@
         button.textContent = folder.name;
         button.addEventListener("click", () => {
           localStorage.setItem("flurb.dropbox.libraryFolder", JSON.stringify({ id: folder.id, path_lower: folder.path_lower, name: folder.name }));
+          updateSelectedFolder();
+          setFolderListOpen(false);
           if (window.parent !== window) window.parent.postMessage({ type: "flurb-library-selected" }, location.origin);
           else location.replace(new URL("./", location.href).href);
         });
@@ -175,6 +195,11 @@
     if (token) listRootFolders();
     else connectDropbox().catch((error) => status(error.message, true));
   });
+  els.libraryToggle.addEventListener("click", () => {
+    if (!els.folders.hidden) setFolderListOpen(false);
+    else if (foldersLoaded) setFolderListOpen(true);
+    else listRootFolders();
+  });
   els.reconnect.addEventListener("click", () => connectDropbox().catch((error) => status(error.message, true)));
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "flurb-dropbox-connected") return;
@@ -182,6 +207,7 @@
     refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
     tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
     if (!token) return;
+    updateSelectedFolder();
     els.connect.textContent = "Select music folder";
     els.connect.classList.add("is-select-folder");
     loadAccountDetails();
@@ -189,8 +215,9 @@
   });
   token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
   if (token) {
-    let selected = null;
-    try { selected = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
+    const selected = updateSelectedFolder();
+    els.library.hidden = false;
+    setFolderListOpen(false);
     els.connect.textContent = "Select music folder";
     els.connect.classList.add("is-select-folder");
     loadAccountDetails();
