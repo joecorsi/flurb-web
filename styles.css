@@ -959,3 +959,4 @@ body.is-embedded .settings-back { display: none; }
 .track-artwork-shell { grid-area: auto; align-self: center !important; }
 .track-row .track-copy { flex: 1 1 auto; min-width: 0; }
 .folder-row .track-copy { flex: 1 1 auto; min-width: 0; }
+.track-list { padding-top: 0; }
