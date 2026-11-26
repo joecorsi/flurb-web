@@ -934,3 +934,5 @@ body.is-embedded .settings-back { display: none; }
 .folder-leading .folder-icon { width: 1.45rem; height: 1.45rem; color: #a54fff; stroke: currentColor; stroke-width: 1.7; }
 .track-row { grid-template-columns: 2.75rem minmax(0, 1fr) auto; }
 .artist-row .folder-leading { color: #a54fff; background: #34312e; }
+.track-row, .folder-row { align-items: center; padding-block: 2px; }
+.track-artwork-shell, .folder-leading { align-self: center; }
