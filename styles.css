@@ -913,6 +913,10 @@ body.is-embedded .settings-back { display: none; }
 }
 .track-row.is-playing .track-name { color: #e6e9df; }
 
+/* Alphabet dividers share the artwork column; keep their label centered there. */
+.library-letter-row { padding: 0 !important; }
+.library-letter-marker { flex: 0 0 44px; width: 44px; margin: 0; padding: 0; color: #fff; text-align: center; }
+
 
 /* Compact, view-rooted breadcrumb chips and 50px controls. */
 :root { --search-row-height: 50px; }
