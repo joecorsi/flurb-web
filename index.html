@@ -9,9 +9,9 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-34">
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-35">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script src="./app.js?v=mobile-player-27" defer></script>
+  <script src="./app.js?v=mobile-player-28" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -52,6 +52,10 @@
         <button class="icon-button favorite-button" id="now-favorite" type="button" aria-label="Favorite current track" title="Favorite current track" disabled><i data-lucide="heart" aria-hidden="true"></i></button>
       </div>
       <div class="player-controls">
+        <button class="player-artwork-button" id="player-artwork-button" type="button" aria-label="View current track artwork" disabled>
+          <span class="track-artwork-shell player-artwork-shell" id="player-artwork-shell"><img class="track-artwork" id="player-artwork" alt=""><i class="artwork-placeholder" data-lucide="music-2" aria-hidden="true"></i></span>
+        </button>
+        <div class="scrubber-row"><span class="time-label" id="elapsed-time">0:00</span><input id="progress" class="range-input" type="range" min="0" max="100" value="0" aria-label="Track position" disabled><span class="time-label" id="duration-time">0:00</span></div>
         <div class="transport">
           <button class="icon-button transport-secondary" id="shuffle-button" type="button" aria-label="Shuffle off" title="Shuffle"><i data-lucide="shuffle" aria-hidden="true"></i></button>
           <button class="icon-button" id="previous-button" type="button" aria-label="Previous track" disabled><i data-lucide="skip-back" aria-hidden="true"></i></button>
@@ -59,9 +63,14 @@
           <button class="icon-button" id="next-button" type="button" aria-label="Next track" disabled><i data-lucide="skip-forward" aria-hidden="true"></i></button>
           <button class="icon-button transport-secondary" id="repeat-button" type="button" aria-label="Repeat off" title="Repeat off"><i data-lucide="repeat" aria-hidden="true"></i></button>
         </div>
-        <div class="scrubber-row"><span class="time-label" id="elapsed-time">0:00</span><input id="progress" class="range-input" type="range" min="0" max="100" value="0" aria-label="Track position" disabled><span class="time-label" id="duration-time">0:00</span></div>
       </div>
     </footer>
+    <section class="artwork-viewer" id="artwork-viewer" aria-label="Track artwork" hidden>
+      <div class="artwork-viewer-art">
+        <div class="artwork-viewer-cover" id="artwork-viewer-cover"><img id="artwork-viewer-image" alt=""><i class="artwork-placeholder" data-lucide="music-2" aria-hidden="true"></i></div>
+      </div>
+      <button class="home-button artwork-viewer-close" id="artwork-viewer-close" type="button" aria-label="Close artwork viewer"><i data-lucide="x" aria-hidden="true"></i></button>
+    </section>
     <div class="settings-overlay" id="settings-overlay" hidden>
       <button class="settings-scrim" type="button" aria-label="Close settings" data-close-settings></button>
       <section class="settings-dialog" role="dialog" aria-modal="true" aria-label="Flurb settings">
