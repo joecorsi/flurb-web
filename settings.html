@@ -7,8 +7,8 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-41">
-  <script src="./settings.js?v=mobile-player-13" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-42">
+  <script src="./settings.js?v=mobile-player-14" defer></script>
 </head>
 <body class="settings-page">
   <main class="settings-shell">
@@ -16,6 +16,12 @@
     <section class="settings-panel">
       <h1>Dropbox</h1>
       <button class="settings-connect" id="settings-connect" type="button">Connect Dropbox</button>
+      <dl class="settings-account" id="dropbox-account" hidden>
+        <div><dt>Account</dt><dd id="dropbox-account-email">—</dd></div>
+        <div><dt>Name</dt><dd id="dropbox-account-name">—</dd></div>
+        <div><dt>Logged in</dt><dd id="dropbox-login-date">—</dd></div>
+      </dl>
+      <button class="settings-reconnect" id="settings-reconnect" type="button" hidden>Reconnect Dropbox for account details</button>
       <div class="settings-library" id="settings-library" hidden>
         <h2>Music folder</h2>
         <div id="settings-folders" class="settings-folders"></div>
@@ -26,6 +32,10 @@
       <h1 id="turso-heading">Turso</h1>
       <label class="settings-field">Database URL<input type="url" placeholder="libsql://…" disabled></label>
       <label class="settings-field">Auth token<input type="password" placeholder="Auth token" disabled></label>
+      <dl class="settings-account" aria-label="Turso account details">
+        <div><dt>Account</dt><dd>—</dd></div>
+        <div><dt>Logged in</dt><dd>—</dd></div>
+      </dl>
       <button class="settings-connect settings-connect-placeholder" type="button" disabled>Connect Turso</button>
     </section>
   </main>
