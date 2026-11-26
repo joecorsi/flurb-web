@@ -7,8 +7,8 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-43">
-  <script src="./settings.js?v=mobile-player-14" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-44">
+  <script src="./settings.js?v=mobile-player-15" defer></script>
 </head>
 <body class="settings-page">
   <main class="settings-shell">
@@ -23,8 +23,11 @@
       </dl>
       <button class="settings-reconnect" id="settings-reconnect" type="button" hidden>Reconnect Dropbox for account details</button>
       <div class="settings-library" id="settings-library" hidden>
-        <h2>Music folder</h2>
-        <div id="settings-folders" class="settings-folders"></div>
+        <button class="settings-library-toggle" id="settings-library-toggle" type="button" aria-expanded="false" aria-controls="settings-folders">
+          <span class="settings-library-current"><span>Music folder</span><strong id="settings-current-folder">No folder selected</strong></span>
+          <svg class="settings-library-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <div id="settings-folders" class="settings-folders" hidden></div>
       </div>
       <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
     </section>
