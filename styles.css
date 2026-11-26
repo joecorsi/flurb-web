@@ -840,3 +840,24 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .library-row, .artist-row, .track-row { height: var(--search-row-height); min-height: var(--search-row-height); }
 .track-row { padding-block: .3rem; }
 @media (min-width: 700px) { .library-sticky { padding: 10px; } }
+
+
+/* Horizontal breadcrumbs scroll as a single row, including the root item. */
+.breadcrumbs { display: block; }
+.breadcrumbs-path { width: 100%; overflow-x: auto; overflow-y: hidden; }
+.breadcrumb-root { flex: 0 0 auto; max-width: none; overflow: visible; text-overflow: clip; }
+.library-row, .artist-row, .track-row { height: var(--search-row-height); min-height: var(--search-row-height); }
+.track-row { padding-block: .3rem; }
+.library-loading-icon { animation: spin .9s linear infinite; }
+.now-playing-link { width: 100%; padding: 0; border: 0; color: inherit; background: transparent; text-align: center; cursor: pointer; }
+.now-playing-link:disabled { opacity: 1; cursor: default; }
+.settings-overlay { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 10px; background: #000a; }
+.settings-overlay[hidden] { display: none !important; }
+.settings-scrim { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+.settings-dialog { position: relative; z-index: 1; display: flex; width: min(100%, 40rem); height: min(88dvh, 54rem); flex-direction: column; overflow: hidden; border: 1px solid #3a3c3f; border-radius: 5px; background: #202124; box-shadow: 0 20px 70px #000b; }
+.settings-dialog-header { display: flex; flex: 0 0 3.5rem; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid #3a3c3f; }
+.settings-dialog-header strong { font-size: .9rem; font-weight: 600; }
+.settings-close { width: 2.4rem; height: 2.4rem; }
+.settings-close svg { width: 1.2rem; height: 1.2rem; }
+.settings-frame { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: #111213; }
+body.is-embedded .settings-back { display: none; }
