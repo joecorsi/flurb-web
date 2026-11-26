@@ -553,6 +553,16 @@
     else els.artworkViewerImage.removeAttribute("src");
     els.artworkViewerCover.classList.toggle("has-artwork", Boolean(link));
   }
+  function positionArtworkClose() {
+    if (els.artworkViewer.hidden) return;
+    const viewerRect = els.artworkViewer.getBoundingClientRect();
+    const artworkBottom = els.artworkViewerCover.getBoundingClientRect().bottom;
+    const halfButton = els.artworkViewerClose.offsetHeight / 2;
+    const freeSpace = Math.max(0, viewerRect.bottom - artworkBottom);
+    let center = freeSpace >= halfButton * 2 ? artworkBottom + freeSpace / 2 : viewerRect.bottom - halfButton;
+    center = Math.max(viewerRect.top + halfButton, Math.min(viewerRect.bottom - halfButton, center));
+    els.artworkViewerClose.style.top = `${center - viewerRect.top}px`;
+  }
   function openArtworkViewer(track) {
     if (!track) return;
     state.viewerTrack = track;
@@ -562,6 +572,7 @@
     const playerTop = els.player.getBoundingClientRect().top;
     els.artworkViewer.style.top = `${Math.max(0, stickyBottom)}px`;
     els.artworkViewer.style.bottom = `${Math.max(0, window.innerHeight - playerTop)}px`;
+    positionArtworkClose();
     if (hasId3ArtworkSupport(track)) queueTrackArtwork(track);
   }
   function closeArtworkViewer() {
