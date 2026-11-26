@@ -340,33 +340,42 @@
   const hasId3ArtworkSupport = (track) => track.name.toLowerCase().endsWith(".mp3");
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
-    const root = state.libraryFolder?.path_lower;
+    const rootButton = document.createElement("button");
+    rootButton.type = "button";
+    rootButton.className = "breadcrumb-root";
+    rootButton.addEventListener("click", goHomeLibrary);
+    const path = document.createElement("span");
+    path.className = "breadcrumbs-path";
+
     if (state.viewMode === "playlists") {
+      rootButton.textContent = "Playlists";
+      els.breadcrumbs.append(rootButton, path);
       const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
-      const names = ["Playlists", ...(playlist ? [playlist.name] : [])];
-      names.forEach((name, index) => {
-        if (index) { const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; els.breadcrumbs.append(divider); }
-        const crumb = document.createElement("span"); crumb.className = `breadcrumb${index === names.length - 1 ? " current" : ""}`; crumb.textContent = name; els.breadcrumbs.append(crumb);
-      });
+      if (playlist) {
+        const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; path.append(divider);
+        const crumb = document.createElement("button"); crumb.type = "button"; crumb.className = "breadcrumb current"; crumb.textContent = playlist.name; crumb.setAttribute("aria-current", "page");
+        crumb.addEventListener("click", goHomeLibrary); path.append(crumb);
+      }
       return;
     }
+
+    const root = state.libraryFolder?.path_lower;
     if (!root || state.folderPicker) return;
-    const chain = [{ path: root, name: state.libraryFolder.name }, ...state.folderHistory, { path: state.folderPath, name: state.folderName }];
-    const crumbs = chain.filter((item, index) => item.path && (index === 0 || item.path.startsWith(`${root}/`)) && chain.findIndex((candidate) => candidate.path === item.path) === index);
-    crumbs.forEach((item, index) => {
-      if (index) {
-        const divider = document.createElement("span");
-        divider.className = "breadcrumb-divider";
-        divider.textContent = "/";
-        divider.setAttribute("aria-hidden", "true");
-        els.breadcrumbs.append(divider);
-      }
-      const crumb = document.createElement("span");
-      crumb.className = `breadcrumb${index === crumbs.length - 1 ? " current" : ""}`;
-      crumb.textContent = item.name;
-      els.breadcrumbs.append(crumb);
+    rootButton.textContent = state.libraryFolder.name;
+    els.breadcrumbs.append(rootButton, path);
+    const folders = [...state.folderHistory, ...(state.folderPath && state.folderPath !== root ? [{ path: state.folderPath, name: state.folderName }] : [])]
+      .filter((item, index, all) => item.path?.startsWith(`${root}/`) && all.findIndex((entry) => entry.path === item.path) === index);
+    folders.forEach((item, index) => {
+      const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; divider.setAttribute("aria-hidden", "true"); path.append(divider);
+      const crumb = document.createElement("button"); crumb.type = "button"; crumb.className = `breadcrumb${index === folders.length - 1 ? " current" : ""}`; crumb.textContent = item.name;
+      if (index === folders.length - 1) crumb.setAttribute("aria-current", "page");
+      crumb.addEventListener("click", () => {
+        state.folderHistory = folders.slice(0, index).map(({ path: folderPath, name }) => ({ path: folderPath, name }));
+        loadLibraryFolder(item.path, item.name).catch((error) => showNotice(friendlyError(error), "error"));
+      });
+      path.append(crumb);
     });
-    els.breadcrumbs.scrollLeft = els.breadcrumbs.scrollWidth;
+    path.scrollLeft = path.scrollWidth;
   }
   function id3FrameSize(bytes, offset, version) {
     if (version === 4) return ((bytes[offset] & 0x7f) << 21) | ((bytes[offset + 1] & 0x7f) << 14) | ((bytes[offset + 2] & 0x7f) << 7) | (bytes[offset + 3] & 0x7f);
@@ -924,6 +933,9 @@
   els.playlistsOption.addEventListener("click", () => setViewMode("playlists"));
   els.libraryOption.addEventListener("click", () => setViewMode("library"));
   document.addEventListener("click", (event) => {
+    if (!event.target.closest(".track-overflow")) {
+      document.querySelectorAll(".track-overflow-menu").forEach((menu) => { menu.hidden = true; });
+    }
     if (!event.target.closest(".mode-picker")) {
       els.viewMenu.hidden = true;
       els.viewButton.setAttribute("aria-expanded", "false");
