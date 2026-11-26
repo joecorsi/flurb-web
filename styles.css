@@ -916,3 +916,8 @@ body.is-embedded .settings-back { display: none; }
 .now-title-viewport::-webkit-scrollbar { display: none; }
 .now-title-viewport.is-manual-scrolling #now-title { animation: none; transform: none !important; }
 .now-title-viewport.is-manual-scrolling::after { display: none; }
+
+/* The active breadcrumb uses the favorite color as its fill; the root fades too. */
+.breadcrumb-root { background: rgba(255,255,255,var(--breadcrumb-opacity,1)); }
+.breadcrumb.current { color: #fff; background: #a54fff; }
+.breadcrumb.current.is-dark { color: #fff; }
