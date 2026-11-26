@@ -697,3 +697,25 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .track-list { padding-inline: var(--page-gutter); }
 .notice { margin-inline: var(--page-gutter); }
 .player { padding-inline: var(--page-gutter); }
+
+/* Keep search compact and pair it with a square shortcut to the library root. */
+:root { --search-row-height: 3.6rem; }
+.search-row { height: var(--search-row-height); min-height: var(--search-row-height); gap: .45rem; }
+.search-box { height: var(--search-row-height); min-height: var(--search-row-height); }
+.home-button {
+  display: grid;
+  flex: 0 0 var(--search-row-height);
+  width: var(--search-row-height);
+  height: var(--search-row-height);
+  place-items: center;
+  padding: 0;
+  border: 1px solid #3a3c3f;
+  border-radius: 4px;
+  color: #ddd;
+  background: #1c1e20;
+  cursor: pointer;
+}
+.home-button svg { width: 1.35rem; height: 1.35rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.home-button:hover:not(:disabled) { border-color: #1680ff; color: #fff; background: #202a37; }
+.home-button:disabled { opacity: .4; cursor: default; }
+.track-artwork { flex: 0 0 2.65rem; width: 2.65rem; height: 2.65rem; object-fit: cover; border-radius: 3px; background: #2b2d30; }
