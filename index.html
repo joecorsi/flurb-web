@@ -9,9 +9,9 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-41">
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-42">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script src="./app.js?v=mobile-player-33" defer></script>
+  <script src="./app.js?v=mobile-player-34" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -27,10 +27,10 @@
             <div class="mode-picker">
             <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Recently added</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
             <div class="mode-menu" id="view-menu" role="menu" hidden>
-              <button type="button" role="menuitemradio" aria-checked="true" data-view="recent"><span>Recently added</span><span class="mode-count" id="recent-count">0</span></button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="favorites"><span>Favorites</span><span class="mode-count" id="favorites-count">0</span></button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="playlists"><span>Playlists</span><span class="mode-count" id="playlists-count">0</span></button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="library"><span>Library</span></button>
+              <button type="button" role="menuitemradio" aria-checked="true" data-view="recent"><i class="view-option-icon" data-lucide="clock-3" aria-hidden="true"></i><span class="view-option-label">Recently added</span><span class="mode-count" id="recent-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="favorites"><i class="view-option-icon" data-lucide="heart" aria-hidden="true"></i><span class="view-option-label">Favorites</span><span class="mode-count" id="favorites-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="playlists"><i class="view-option-icon" data-lucide="list-music" aria-hidden="true"></i><span class="view-option-label">Playlists</span><span class="mode-count" id="playlists-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="library"><i class="view-option-icon" data-lucide="library" aria-hidden="true"></i><span class="view-option-label">Library</span></button>
             </div>
             </div>
           </div>
