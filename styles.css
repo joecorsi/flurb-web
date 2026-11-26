@@ -726,3 +726,46 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .breadcrumb { flex: 0 0 auto; }
 .breadcrumb.current { color: #c5c6c8; }
 .breadcrumb-divider { flex: 0 0 auto; color: #5c5e61; }
+
+/* Keep all library controls aligned to one compact mobile rhythm. */
+:root { --top-control-gap: .45rem; }
+.library-sticky { gap: var(--top-control-gap); padding-block: var(--top-control-gap); border-bottom: 1px solid var(--line); }
+.search-row { gap: var(--top-control-gap); }
+.home-button { text-decoration: none; }
+.settings-button svg { width: 1.4rem; height: 1.4rem; }
+.search-box { gap: .5rem; }
+.search-box .search-icon { flex: 0 0 1rem; }
+.search-box input { flex: 1 1 auto; min-width: 0; font-size: 16px; }
+.search-box input::-webkit-search-cancel-button { display: none; }
+.clear-search { display: grid; flex: 0 0 2rem; width: 2rem; height: 2rem; place-items: center; padding: 0; border: 0; color: #d5d6d8; background: transparent; font: 400 1.8rem/1 var(--sans); cursor: pointer; }
+.clear-search:disabled { opacity: .32; }
+.mode-picker { position: relative; width: calc(100% - var(--search-row-height) - var(--search-row-height) - var(--top-control-gap) - var(--top-control-gap)); margin-left: calc(var(--search-row-height) + var(--search-row-height) + var(--top-control-gap) + var(--top-control-gap)); }
+.mode-select { display: flex; width: 100%; height: var(--search-row-height); align-items: center; justify-content: space-between; gap: .75rem; padding: 0 .85rem; border: 1px solid #3a3c3f; border-radius: 4px; color: #ddd; background: #1c1e20; text-align: left; font-size: .84rem; cursor: pointer; }
+.mode-select:hover, .mode-select[aria-expanded="true"] { border-color: #5b5e62; background: #222426; }
+.mode-select svg { flex: 0 0 1.1rem; width: 1.1rem; height: 1.1rem; fill: none; stroke: #a9abad; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mode-menu { position: absolute; z-index: 35; top: calc(100% + .25rem); right: 0; left: 0; overflow: hidden; border: 1px solid #3a3c3f; border-radius: 4px; background: #1c1e20; box-shadow: 0 10px 24px #0008; }
+.mode-menu[hidden] { display: none; }
+.mode-menu button { display: flex; width: 100%; min-height: 3rem; align-items: center; justify-content: space-between; gap: .75rem; padding: .65rem .85rem; border: 0; color: #ddd; background: transparent; text-align: left; font: 500 .82rem var(--sans); cursor: pointer; }
+.mode-menu button + button { border-top: 1px solid #343638; }
+.mode-menu button:hover, .mode-menu button[aria-checked="true"] { color: #fff; background: #282a2d; }
+.mode-count { color: #929498; font: .72rem var(--mono); }
+.breadcrumbs { margin-left: calc(var(--search-row-height) + var(--search-row-height) + var(--top-control-gap) + var(--top-control-gap)); width: calc(100% - var(--search-row-height) - var(--search-row-height) - var(--top-control-gap) - var(--top-control-gap)); min-height: .9rem; padding: 0 .15rem; font: .64rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* Match the reference transport: five equally spaced, quiet controls. */
+.player-track { min-height: 3rem; }
+.player-waveform { display: none !important; }
+.transport { display: grid; width: min(100%, 30rem); grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; justify-items: center; gap: .15rem; margin: 0 auto; }
+.transport .icon-button { width: 100%; height: 3rem; color: #a5a7aa; }
+.transport .icon-button svg { width: 1.45rem; height: 1.45rem; stroke-width: 2; }
+.transport .transport-secondary { color: #a5a7aa; }
+.transport .transport-secondary.active { color: #dedfe1; }
+.transport .play-button { width: 3.1rem; height: 3.1rem; border-radius: 0; color: #eee; background: transparent; }
+.transport .play-button:hover:not(:disabled) { transform: scale(1.06); color: #fff; background: transparent; }
+.transport .play-button svg { width: 1.9rem; height: 1.9rem; }
+.transport .play-button .play-icon path { fill: currentColor; }
+.player { gap: .15rem; }
+@media (max-width: 370px) {
+  .transport { gap: 0; }
+  .transport .icon-button { width: 100%; }
+  .transport .play-button { width: 2.8rem; height: 2.8rem; }
+}
