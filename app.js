@@ -878,6 +878,20 @@
     }
     playTrack(playlist[nextIndex]);
   }
+  function registerMediaSessionActions() {
+    const session = navigator.mediaSession;
+    if (!session?.setActionHandler) return;
+    const actions = {
+      play: () => els.audio.play().catch((error) => showNotice(friendlyError(error), "error")),
+      pause: () => els.audio.pause(),
+      previoustrack: () => playNext(-1),
+      nexttrack: () => playNext(1),
+      seekto: (details) => { if (Number.isFinite(details.seekTime)) els.audio.currentTime = details.seekTime; }
+    };
+    Object.entries(actions).forEach(([action, handler]) => { try { session.setActionHandler(action, handler); } catch (_) {} });
+    // iOS Safari can retain its default 10-second controls unless these are explicitly removed.
+    ["seekbackward", "seekforward"].forEach((action) => { try { session.setActionHandler(action, null); } catch (_) {} });
+  }
   function updateTransport() {
     const hasTrack = Boolean(state.current);
     els.play.disabled = !hasTrack || state.loadingTrack;
@@ -1018,6 +1032,7 @@
   els.audio.addEventListener("timeupdate", renderProgress);
   els.audio.addEventListener("loadedmetadata", () => { renderProgress(); renderTracks(); });
   els.audio.addEventListener("play", () => { updateTransport(); renderTracks(); });
+  els.audio.addEventListener("playing", registerMediaSessionActions);
   els.audio.addEventListener("pause", () => { updateTransport(); renderTracks(); });
   els.audio.addEventListener("ended", () => {
     if (state.repeat === "one") { els.audio.currentTime = 0; els.audio.play(); }
@@ -1028,16 +1043,7 @@
     if (state.current && !els.audio.paused) showNotice("The audio stream was interrupted. Try playing the track again.", "error");
   });
 
-  if (navigator.mediaSession?.setActionHandler) {
-    const actions = {
-      play: () => els.audio.play().catch((error) => showNotice(friendlyError(error), "error")),
-      pause: () => els.audio.pause(),
-      previoustrack: () => playNext(-1),
-      nexttrack: () => playNext(1),
-      seekto: (details) => { if (Number.isFinite(details.seekTime)) els.audio.currentTime = details.seekTime; }
-    };
-    Object.entries(actions).forEach(([action, handler]) => { try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {} });
-  }
+
 
   installHistoryNavigation();
   if (state.token && state.libraryFolder?.path_lower) setLibraryLoading(true);
