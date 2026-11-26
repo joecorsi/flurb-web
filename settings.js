@@ -24,11 +24,12 @@
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
   async function connectDropbox() {
+    const popup = window.open("about:blank", "flurb-dropbox-auth", "popup,width=520,height=680");
     const verifier = randomString(48);
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
     const redirectUri = new URL("./", location.href).href;
     const csrf = randomString(24);
-    sessionStorage.setItem("flurb.dropbox.pkce", JSON.stringify({ verifier, csrf, redirectUri }));
+    localStorage.setItem("flurb.dropbox.pkce", JSON.stringify({ verifier, csrf, redirectUri }));
     const params = new URLSearchParams({
       client_id: APP_KEY,
       response_type: "code",
@@ -38,7 +39,9 @@
       state: csrf,
       scope: "files.metadata.read files.content.read"
     });
-    location.assign(`https://www.dropbox.com/oauth2/authorize?${params}`);
+    const authorizationUrl = `https://www.dropbox.com/oauth2/authorize?${params}`;
+    if (popup) popup.location.assign(authorizationUrl);
+    else location.assign(authorizationUrl);
   }
   async function dropbox(path, body = {}) {
     const response = await fetch(`${API}${path}`, {
@@ -81,7 +84,7 @@
         button.textContent = folder.name;
         button.addEventListener("click", () => {
           localStorage.setItem("flurb.dropbox.libraryFolder", JSON.stringify({ id: folder.id, path_lower: folder.path_lower, name: folder.name }));
-          location.assign(new URL("./", location.href).href);
+          location.replace(new URL("./", location.href).href);
         });
         els.folders.append(button);
       });
@@ -93,6 +96,13 @@
   els.connect.addEventListener("click", () => {
     if (token) listRootFolders();
     else connectDropbox().catch((error) => status(error.message, true));
+  });
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin || event.data?.type !== "flurb-dropbox-connected") return;
+    token = localStorage.getItem("flurb.dropbox.accessToken") || "";
+    if (!token) return;
+    els.connect.textContent = "Change music folder";
+    listRootFolders();
   });
   token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
   if (token) {
