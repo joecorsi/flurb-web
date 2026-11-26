@@ -1035,6 +1035,7 @@
       els.elapsed.textContent = "0:00";
       els.duration.textContent = "0:00";
     }
+    els.progress.style.setProperty("--progress", `${Number(els.progress.value)}%`);
     if (Number.isFinite(duration) && duration > 0 && navigator.mediaSession?.setPositionState) {
       try { navigator.mediaSession.setPositionState({ duration, playbackRate: els.audio.playbackRate || 1, position: Math.min(els.audio.currentTime, duration) }); } catch (_) {}
     }
@@ -1149,6 +1150,7 @@
   });
   els.nowFavorite.addEventListener("click", () => { if (state.current) toggleFavorite(state.current); });
   els.progress.addEventListener("input", () => {
+    els.progress.style.setProperty("--progress", `${Number(els.progress.value)}%`);
     if (Number.isFinite(els.audio.duration)) els.audio.currentTime = (Number(els.progress.value) / 100) * els.audio.duration;
   });
   els.audio.addEventListener("timeupdate", renderProgress);
