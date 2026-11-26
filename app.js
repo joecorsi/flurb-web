@@ -9,7 +9,7 @@
   const els = {
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
     librarySticky: $("#library-sticky"), playerArtworkButton: $("#player-artwork-button"), playerArtwork: $("#player-artwork"), playerArtworkShell: $("#player-artwork-shell"),
-    artworkViewer: $("#artwork-viewer"), artworkViewerClose: $("#artwork-viewer-close"), artworkViewerImage: $("#artwork-viewer-image"), artworkViewerCover: $("#artwork-viewer-cover"),
+    artworkViewer: $("#artwork-viewer"), artworkViewerImage: $("#artwork-viewer-image"), artworkViewerCover: $("#artwork-viewer-cover"),
     settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), nowTitleViewport: $("#now-title-viewport"), emptyGlyph: $(".empty-glyph"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
     recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
@@ -565,30 +565,23 @@
     else els.artworkViewerImage.removeAttribute("src");
     els.artworkViewerCover.classList.toggle("has-artwork", Boolean(link));
   }
-  function positionArtworkClose() {
-    if (els.artworkViewer.hidden) return;
-    const viewerRect = els.artworkViewer.getBoundingClientRect();
-    const artworkBottom = els.artworkViewerCover.getBoundingClientRect().bottom;
-    const halfButton = els.artworkViewerClose.offsetHeight / 2;
-    const freeSpace = Math.max(0, viewerRect.bottom - artworkBottom);
-    let center = freeSpace >= halfButton * 2 ? artworkBottom + freeSpace / 2 : viewerRect.bottom - halfButton;
-    center = Math.max(viewerRect.top + halfButton, Math.min(viewerRect.bottom - halfButton, center));
-    els.artworkViewerClose.style.top = `${center - viewerRect.top}px`;
-  }
   function openArtworkViewer(track) {
     if (!track) return;
     state.viewerTrack = track;
     updateViewerArtwork(track);
     els.artworkViewer.hidden = false;
+    document.body.classList.add("is-artwork-viewing");
+    els.playerArtworkButton.setAttribute("aria-label", "Close track artwork");
     const stickyBottom = els.librarySticky.getBoundingClientRect().bottom;
     const playerTop = els.player.getBoundingClientRect().top;
     els.artworkViewer.style.top = `${Math.max(0, stickyBottom)}px`;
     els.artworkViewer.style.bottom = `${Math.max(0, window.innerHeight - playerTop)}px`;
-    positionArtworkClose();
     if (hasId3ArtworkSupport(track)) queueTrackArtwork(track);
   }
   function closeArtworkViewer() {
     els.artworkViewer.hidden = true;
+    document.body.classList.remove("is-artwork-viewing");
+    els.playerArtworkButton.setAttribute("aria-label", "View current track artwork");
     state.viewerTrack = null;
   }
   function pumpArtworkQueue() {
@@ -673,6 +666,7 @@
     if (!(path === root || path.startsWith(`${root}/`))) throw new Error("That folder is outside the selected Flurb library.");
     const request = ++state.navigationRequest;
     if (path !== state.folderPath) els.search.value = "";
+    syncSearchState();
     els.clearSearch.disabled = !els.search.value;
     state.folderPicker = false;
     state.folderPath = path;
@@ -1081,6 +1075,9 @@
     els.nowFavorite.classList.toggle("active", active);
     els.nowFavorite.setAttribute("aria-label", active ? "Remove current track from favorites" : "Favorite current track");
   }
+  function syncSearchState() {
+    document.body.classList.toggle("is-searching", document.activeElement === els.search || Boolean(els.search.value.trim()));
+  }
   function toggleFavorite(track) {
     if (state.favorites.has(track.id)) {
       state.favorites.delete(track.id);
@@ -1123,12 +1120,16 @@
   }
   els.search.addEventListener("input", () => {
     els.clearSearch.disabled = !els.search.value;
+    syncSearchState();
     state.displayLimit = 100;
     renderTracks();
   });
+  els.search.addEventListener("focus", syncSearchState);
+  els.search.addEventListener("blur", syncSearchState);
   els.clearSearch.addEventListener("click", () => {
     els.search.value = "";
     els.clearSearch.disabled = true;
+    syncSearchState();
     state.displayLimit = 100;
     renderTracks();
     els.search.focus();
@@ -1194,10 +1195,18 @@
       showAlbumInLibrary(state.current);
     }
   });
-  els.playerArtworkButton.addEventListener("click", () => openArtworkViewer(state.current));
-  els.artworkViewerClose.addEventListener("click", closeArtworkViewer);
+  els.playerArtworkButton.addEventListener("click", () => {
+    if (!els.artworkViewer.hidden) closeArtworkViewer();
+    else openArtworkViewer(state.current);
+  });
   window.addEventListener("resize", () => {
-    if (!els.artworkViewer.hidden && state.viewerTrack) openArtworkViewer(state.viewerTrack);
+    if (!els.artworkViewer.hidden && state.viewerTrack) {
+      updateViewerArtwork(state.viewerTrack);
+      const stickyBottom = els.librarySticky.getBoundingClientRect().bottom;
+      const playerTop = els.player.getBoundingClientRect().top;
+      els.artworkViewer.style.top = `${Math.max(0, stickyBottom)}px`;
+      els.artworkViewer.style.bottom = `${Math.max(0, window.innerHeight - playerTop)}px`;
+    }
   });
   window.addEventListener("resize", updateTitleMarquee);
   window.addEventListener("message", (event) => {
