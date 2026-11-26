@@ -1048,6 +1048,60 @@ html, body { touch-action: pan-x pan-y; }
 .scrubber-row { grid-area: seek; }
 .transport { grid-area: transport; }
 
+/* Searching on a phone gives the list the full viewport above the keyboard. */
+@media (max-width: 699px) {
+  body.is-searching .player { display: none !important; }
+  body.is-searching .app-shell { padding-bottom: 10px !important; }
+}
+
+/* Prevent iOS touch focus from leaving a blue ring on the Settings control. */
+#settings-button,
+#settings-button:focus,
+#settings-button:focus-visible,
+#settings-button:active {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The player artwork slot becomes the close control while artwork is expanded. */
+.player-artwork-close-icon { display: none; width: 22px; height: 22px; margin: auto; }
+body.is-artwork-viewing #player-artwork-button {
+  display: grid;
+  place-items: center;
+  border: 1px solid #3a3c3f;
+  border-radius: 4px;
+  color: #eee;
+  background: #202124;
+}
+body.is-artwork-viewing #player-artwork-shell { display: none; }
+body.is-artwork-viewing .player-artwork-close-icon { display: block; }
+
+/* Collapsible Dropbox folder list with the selected folder always in view. */
+.settings-library { margin-top: 1rem; }
+.settings-library-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .55rem .7rem;
+  border: 1px solid #343638;
+  border-radius: 4px;
+  color: #eee;
+  background: #171819;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-library-current { display: flex; min-width: 0; flex-direction: column; gap: .2rem; }
+.settings-library-current > span { color: #a0a1a4; font-size: .72rem; }
+.settings-library-current > strong { overflow: hidden; color: #fff; font-size: .9rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.settings-library-chevron { flex: 0 0 18px; width: 18px; height: 18px; fill: none; stroke: #a54fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
+.settings-library-toggle.is-open .settings-library-chevron { transform: rotate(180deg); }
+.settings-folders { max-height: min(48dvh, 24rem); overflow-y: auto; margin-top: .5rem; }
+.settings-folders[hidden] { display: none !important; }
+
 /* Purple accent icons and a solid white heart in the Favorites root. */
 :root { --lime: #a54fff; --lime-dark: #a54fff; }
 .brand-mark i { background: #a54fff; }
@@ -1124,9 +1178,6 @@ html, body { touch-action: pan-x pan-y; }
 .artwork-viewer-cover.has-artwork > img { opacity: 1; }
 .artwork-viewer-cover.has-artwork > .artwork-placeholder { display: none; }
 .artwork-viewer-cover > .artwork-placeholder { width: 72px; height: 72px; color: #9a9999; }
-.artwork-viewer-close { position: absolute; top: 50%; bottom: auto; left: 50%; transform: translate(-50%, -50%); }
-.artwork-viewer-close:hover:not(:disabled) { transform: translate(-50%, -50%); }
-
 /* Align player cover to the list's 10px artwork column beside the track info. */
 .player { grid-template-areas: "track" "seek" "transport"; }
 .player-track {
