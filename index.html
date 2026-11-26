@@ -9,8 +9,8 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-11">
-  <script src="./app.js?v=mobile-player-13" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-12">
+  <script src="./app.js?v=mobile-player-14" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -18,15 +18,19 @@
       <section class="library" aria-labelledby="library-heading">
         <div class="library-sticky" id="library-sticky">
           <div class="search-row">
-            <a class="home-button settings-button" href="./settings.html" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8.1 8.1 0 0 1-1.5.9l-.3 1.8h-2.8l-.3-1.8a8.1 8.1 0 0 1-1.5-.9l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-1.8l-1.4-1.1 1.4-2.4 1.7.7a8.1 8.1 0 0 1 1.5-.9l.3-1.8h2.8l.3 1.8a8.1 8.1 0 0 1 1.5.9l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 1.8Z" transform="translate(-1 -1)"/></svg></a>
             <button class="home-button" id="home-button" type="button" aria-label="Go to music library root" title="Music library root" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7"/><path d="M5.5 9.5V21h13V9.5M9 21v-7h6v7"/></svg></button>
             <div class="search-box"><svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="Search" aria-label="Search tracks and artists" disabled><button class="clear-search" id="clear-search" type="button" aria-label="Clear search" title="Clear search" disabled>×</button></div>
           </div>
-          <div class="mode-picker">
-            <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Library views</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          <div class="action-row">
+            <a class="home-button settings-button" href="./settings.html" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.8v2.1m0 14.2v2.1M2.8 12h2.1m14.2 0h2.1M5.5 5.5 7 7m10 10 1.5 1.5m0-13L17 7M7 17l-1.5 1.5"/><circle cx="12" cy="12" r="8.4"/></svg></a>
+            <div class="mode-picker">
+            <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Recently added</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
             <div class="mode-menu" id="view-menu" role="menu" hidden>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="recent"><span>Recently added</span><span class="mode-count" id="recent-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="true" data-view="recent"><span>Recently added</span><span class="mode-count" id="recent-count">0</span></button>
               <button type="button" role="menuitemradio" aria-checked="false" data-view="favorites"><span>Favorites</span><span class="mode-count" id="favorites-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="playlists"><span>Playlists</span><span class="mode-count" id="playlists-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="library"><span>Library</span></button>
+            </div>
             </div>
           </div>
           <nav class="breadcrumbs" id="breadcrumbs" aria-label="Music library location"></nav>
