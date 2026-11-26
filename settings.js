@@ -7,7 +7,12 @@
     connect: document.querySelector("#settings-connect"),
     library: document.querySelector("#settings-library"),
     folders: document.querySelector("#settings-folders"),
-    status: document.querySelector("#settings-status")
+    status: document.querySelector("#settings-status"),
+    account: document.querySelector("#dropbox-account"),
+    accountEmail: document.querySelector("#dropbox-account-email"),
+    accountName: document.querySelector("#dropbox-account-name"),
+    loginDate: document.querySelector("#dropbox-login-date"),
+    reconnect: document.querySelector("#settings-reconnect")
   };
   let token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
   let refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
@@ -41,7 +46,8 @@
       code_challenge_method: "S256",
       redirect_uri: redirectUri,
       state: csrf,
-      scope: "files.metadata.read files.content.read",
+      scope: "files.metadata.read files.content.read account_info.read",
+      include_granted_scopes: "user",
       token_access_type: "offline"
     });
     const authorizationUrl = `https://www.dropbox.com/oauth2/authorize?${params}`;
@@ -52,7 +58,7 @@
     token = "";
     refreshToken = "";
     tokenExpiresAt = 0;
-    ["flurb.dropbox.accessToken", "flurb.dropbox.refreshToken", "flurb.dropbox.tokenExpiresAt"].forEach((key) => {
+    ["flurb.dropbox.accessToken", "flurb.dropbox.refreshToken", "flurb.dropbox.tokenExpiresAt", "flurb.dropbox.loginAt"].forEach((key) => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
@@ -141,10 +147,35 @@
     }
   }
 
+  function formatLoginDate(value) {
+    const timestamp = Number(value);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return "Not recorded";
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
+  }
+  async function loadAccountDetails() {
+    if (!token) { els.account.hidden = true; els.reconnect.hidden = true; return; }
+    els.account.hidden = false;
+    els.accountEmail.textContent = "Loading…";
+    els.accountName.textContent = "—";
+    const loginAt = localStorage.getItem("flurb.dropbox.loginAt");
+    els.loginDate.textContent = formatLoginDate(loginAt);
+    els.reconnect.hidden = Boolean(loginAt);
+    try {
+      const account = await dropbox("/users/get_current_account");
+      els.accountEmail.textContent = account.email || "—";
+      els.accountName.textContent = account.name?.display_name || "—";
+    } catch (error) {
+      els.accountEmail.textContent = /missing_scope|insufficient_scope/i.test(error.message) ? "Reconnect to allow account details" : "Unavailable";
+      if (/missing_scope|insufficient_scope/i.test(error.message)) els.reconnect.hidden = false;
+      else status(error.message || "Could not load Dropbox account details.", true);
+    }
+  }
+
   els.connect.addEventListener("click", () => {
     if (token) listRootFolders();
     else connectDropbox().catch((error) => status(error.message, true));
   });
+  els.reconnect.addEventListener("click", () => connectDropbox().catch((error) => status(error.message, true)));
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "flurb-dropbox-connected") return;
     token = localStorage.getItem("flurb.dropbox.accessToken") || "";
@@ -153,6 +184,7 @@
     if (!token) return;
     els.connect.textContent = "Select music folder";
     els.connect.classList.add("is-select-folder");
+    loadAccountDetails();
     listRootFolders();
   });
   token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
@@ -161,6 +193,7 @@
     try { selected = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
     els.connect.textContent = "Select music folder";
     els.connect.classList.add("is-select-folder");
+    loadAccountDetails();
     if (selected?.name) status(`${selected.name} selected`);
     const justConnected = new URLSearchParams(location.search).get("connected") === "1";
     if (justConnected || !selected?.name) {
@@ -169,5 +202,7 @@
     }
   } else {
     els.connect.textContent = "Connect Dropbox";
+    els.account.hidden = true;
+    els.reconnect.hidden = true;
   }
 })();
