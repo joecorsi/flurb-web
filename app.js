@@ -13,6 +13,9 @@
   };
   const state = {
     token: localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "",
+    refreshToken: localStorage.getItem("flurb.dropbox.refreshToken") || "",
+    tokenExpiresAt: Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0),
+    refreshPromise: null,
     libraryFolder: null,
     viewMode: "library",
     folderPicker: false,
@@ -66,11 +69,67 @@
     if (/path\/not_found/i.test(text)) return "The selected library folder is no longer available.";
     return text;
   }
-  async function dropbox(path, body = {}) {
+  function clearDropboxTokens() {
+    state.token = "";
+    state.refreshToken = "";
+    state.tokenExpiresAt = 0;
+    ["flurb.dropbox.accessToken", "flurb.dropbox.refreshToken", "flurb.dropbox.tokenExpiresAt"].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+    updateConnection();
+  }
+  async function ensureAccessToken(force = false) {
+    if (!force && state.token && (!state.tokenExpiresAt || Date.now() < state.tokenExpiresAt - 60_000)) return state.token;
+    if (!state.refreshToken) {
+      if (state.token && !force) return state.token;
+      throw new Error("Reconnect Dropbox once to enable a lasting session.");
+    }
+    if (!state.refreshPromise) {
+      state.refreshPromise = (async () => {
+        const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: state.refreshToken, client_id: "b7db4q3upd3kspx" });
+        const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
+          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (/invalid_grant|invalid_refresh_token/i.test(`${result.error || ""} ${result.error_description || ""}`)) clearDropboxTokens();
+          throw new Error(result.error_description || result.error || "Could not renew your Dropbox session.");
+        }
+        state.token = result.access_token;
+        state.tokenExpiresAt = Date.now() + (Number(result.expires_in) || 14_400) * 1000;
+        localStorage.setItem("flurb.dropbox.accessToken", state.token);
+        localStorage.setItem("flurb.dropbox.tokenExpiresAt", String(state.tokenExpiresAt));
+        sessionStorage.setItem("flurb.dropbox.accessToken", state.token);
+        sessionStorage.setItem("flurb.dropbox.tokenExpiresAt", String(state.tokenExpiresAt));
+        return state.token;
+      })().finally(() => { state.refreshPromise = null; });
+    }
+    return state.refreshPromise;
+  }
+  async function downloadTrackFile(track, retried = false) {
+    const accessToken = await ensureAccessToken();
+    const response = await fetch("https://content.dropboxapi.com/2/files/download", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Dropbox-API-Arg": JSON.stringify({ path: track.id })
+      }
+    });
+    if (response.status === 401 && state.refreshToken && !retried) {
+      await ensureAccessToken(true);
+      return downloadTrackFile(track, true);
+    }
+    if (response.status === 401) clearDropboxTokens();
+    if (!response.ok) throw new Error(`Track artwork request failed (${response.status}).`);
+    return response.arrayBuffer();
+  }
+  async function dropbox(path, body = {}, retried = false) {
+    const accessToken = await ensureAccessToken();
     const response = await fetch(`${API}${path}`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${state.token}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(body)
@@ -79,11 +138,12 @@
     let payload = {};
     try { payload = raw ? JSON.parse(raw) : {}; } catch (_) {}
     if (!response.ok) {
+      if (response.status === 401 && state.refreshToken && !retried) {
+        await ensureAccessToken(true);
+        return dropbox(path, body, true);
+      }
       if (response.status === 401) {
-        state.token = "";
-        sessionStorage.removeItem("flurb.dropbox.accessToken");
-        localStorage.removeItem("flurb.dropbox.accessToken");
-        updateConnection();
+        clearDropboxTokens();
       }
       const requestId = response.headers.get("x-dropbox-request-id");
       const detail = payload.error_summary || payload.error?.[".tag"] || raw || `Dropbox request failed (${response.status}).`;
@@ -155,12 +215,19 @@
     }
     try {
       const form = new URLSearchParams({ code, grant_type: "authorization_code", client_id: "b7db4q3upd3kspx", code_verifier: pending.verifier, redirect_uri: pending.redirectUri });
-      const response = await fetch("https://api.dropboxapi.com/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+      const response = await fetch("https://api.dropbox.com/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error_description || result.error || "Dropbox sign-in failed.");
       state.token = result.access_token;
+      if (result.refresh_token) {
+        state.refreshToken = result.refresh_token;
+        localStorage.setItem("flurb.dropbox.refreshToken", state.refreshToken);
+      }
+      state.tokenExpiresAt = Date.now() + (Number(result.expires_in) || 14_400) * 1000;
       localStorage.setItem("flurb.dropbox.accessToken", state.token);
+      localStorage.setItem("flurb.dropbox.tokenExpiresAt", String(state.tokenExpiresAt));
       sessionStorage.setItem("flurb.dropbox.accessToken", state.token);
+      sessionStorage.setItem("flurb.dropbox.tokenExpiresAt", String(state.tokenExpiresAt));
       if (window.opener && !window.opener.closed) {
         window.opener.postMessage({ type: "flurb-dropbox-connected" }, location.origin);
         window.close();
@@ -346,15 +413,8 @@
     while (state.activeArtworkDownloads < 2 && state.artworkQueue.length) {
       const track = state.artworkQueue.shift();
       state.activeArtworkDownloads += 1;
-      fetch("https://content.dropboxapi.com/2/files/download", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${state.token}`,
-          "Dropbox-API-Arg": JSON.stringify({ path: track.id })
-        }
-      }).then(async (response) => {
-        if (!response.ok) throw new Error(`Track artwork request failed (${response.status}).`);
-        const cover = extractId3Artwork(await response.arrayBuffer());
+      downloadTrackFile(track).then((buffer) => {
+        const cover = extractId3Artwork(buffer);
         if (!cover) return;
         const objectUrl = URL.createObjectURL(cover);
         state.artworkLinks.set(track.id, objectUrl);
