@@ -8,7 +8,7 @@
   }
   const els = {
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
-    settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), emptyGlyph: $("#empty-icon"),
+    settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), emptyGlyph: $(".empty-glyph"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
     recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
     playlistsOption: $('[data-view="playlists"]'), playlistsCount: $("#playlists-count"), libraryOption: $('[data-view="library"]'),
@@ -377,16 +377,15 @@
       els.emptyState.classList.add("is-loading");
       els.emptyState.hidden = false;
       els.emptyState.querySelector("p").textContent = "Loading library…";
-      const host = els.emptyGlyph.parentElement;
+      const host = els.emptyGlyph;
       host.innerHTML = '<i id="empty-icon" data-lucide="loader-circle" class="library-loading-icon" aria-hidden="true"></i>';
-      renderLucideIcons(host); els.emptyGlyph = $("#empty-icon");
-      els.emptyGlyph.classList.add("library-loading-icon");
+      renderLucideIcons(host);
     } else if (wasLoading) {
       els.emptyState.classList.remove("is-loading");
-      const host = els.emptyGlyph.parentElement;
+      const host = els.emptyGlyph;
       host.innerHTML = '<i id="empty-icon" data-lucide="disc-3" aria-hidden="true"></i>';
       els.emptyState.querySelector("p").textContent = "No tracks";
-      renderLucideIcons(host); els.emptyGlyph = $("#empty-icon");
+      renderLucideIcons(host);
     }
   }
   function openSettings() {
