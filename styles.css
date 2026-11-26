@@ -921,3 +921,16 @@ body.is-embedded .settings-back { display: none; }
 .breadcrumb-root { background: rgba(255,255,255,var(--breadcrumb-opacity,1)); }
 .breadcrumb.current { color: #fff; background: #a54fff; }
 .breadcrumb.current.is-dark { color: #fff; }
+
+
+/* Artwork and folders share a 44px square tile with a muted music placeholder. */
+.track-artwork-shell, .folder-leading { position: relative; display: grid; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; place-items: center; overflow: hidden; border-radius: .6rem; background: #34312e; }
+.track-artwork-shell { grid-area: artwork; }
+.track-artwork-shell .track-artwork { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; opacity: 0; background: transparent; }
+.track-artwork-shell.has-artwork .track-artwork { opacity: 1; }
+.artwork-placeholder { display: grid; width: 1.65rem; height: 1.65rem; color: #9a9999; }
+.track-artwork-shell.has-artwork .artwork-placeholder { display: none; }
+.folder-leading { color: #a54fff; }
+.folder-leading .folder-icon { width: 1.45rem; height: 1.45rem; color: #a54fff; stroke: currentColor; stroke-width: 1.7; }
+.track-row { grid-template-columns: 2.75rem minmax(0, 1fr) auto; }
+.artist-row .folder-leading { color: #a54fff; background: #34312e; }
