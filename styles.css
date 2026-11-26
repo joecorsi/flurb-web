@@ -1024,6 +1024,40 @@ html, body { touch-action: pan-x pan-y; }
 .scrubber-row { grid-area: seek; }
 .transport { grid-area: transport; }
 
+/* Slim seek bar: white elapsed track, charcoal remainder, and a quiet gray thumb. */
+#progress.range-input {
+  height: 24px;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  accent-color: #f2f2f2;
+  cursor: pointer;
+}
+#progress.range-input:disabled { cursor: default; opacity: 1; }
+#progress.range-input::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #f2f2f2 0%, #f2f2f2 var(--progress, 0%), #343434 var(--progress, 0%), #343434 100%);
+}
+#progress.range-input::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 50%;
+  background: #c9cacc;
+}
+#progress.range-input:disabled::-webkit-slider-thumb { background: #77797c; }
+#progress.range-input::-moz-range-track { height: 6px; border: 0; border-radius: 999px; background: #343434; }
+#progress.range-input::-moz-range-progress { height: 6px; border-radius: 999px; background: #f2f2f2; }
+#progress.range-input::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #c9cacc; }
+#progress.range-input:disabled::-moz-range-thumb { background: #77797c; }
+
 /* Show cover art in place of the list, without changing its scroll position. */
 .artwork-viewer {
   position: fixed;
