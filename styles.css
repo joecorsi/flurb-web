@@ -962,3 +962,18 @@ body.is-embedded .settings-back { display: none; }
 .track-list { padding-top: 0; }
 .track-artwork-shell, .folder-leading { position: relative; top: -1px; }
 .track-artwork-shell, .folder-leading { border-radius: 4px; }
+
+.breadcrumbs-path {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.breadcrumbs-path::-webkit-scrollbar { display: none; }
+html, body { touch-action: pan-x pan-y; }
+.breadcrumbs-path { overscroll-behavior-x: contain; }
