@@ -9,9 +9,9 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-18">
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-20">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script src="./app.js?v=mobile-player-21" defer></script>
+  <script src="./app.js?v=mobile-player-23" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -48,7 +48,7 @@
 
     <footer class="player" id="player" aria-label="Audio player">
       <div class="player-track">
-        <button class="now-playing now-playing-link" id="now-playing-link" type="button" aria-label="Open the current track folder" disabled><strong id="now-title">Nothing playing yet</strong><span id="now-album"></span></button>
+        <button class="now-playing now-playing-link" id="now-playing-link" type="button" aria-label="Open the current track folder" disabled><span class="now-title-viewport" id="now-title-viewport"><strong id="now-title">Nothing playing yet</strong></span><span id="now-album"></span></button>
         <button class="icon-button favorite-button" id="now-favorite" type="button" aria-label="Favorite current track" title="Favorite current track" disabled><i data-lucide="heart" aria-hidden="true"></i></button>
       </div>
       <div class="player-controls">
