@@ -9,8 +9,9 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-12">
-  <script src="./app.js?v=mobile-player-15" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-13">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="./app.js?v=mobile-player-16" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -18,13 +19,13 @@
       <section class="library" aria-labelledby="library-heading">
         <div class="library-sticky" id="library-sticky">
           <div class="search-row">
-            <button class="home-button" id="home-button" type="button" aria-label="Go to music library root" title="Music library root" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7"/><path d="M5.5 9.5V21h13V9.5M9 21v-7h6v7"/></svg></button>
-            <div class="search-box"><svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="Search" aria-label="Search tracks and artists" disabled><button class="clear-search" id="clear-search" type="button" aria-label="Clear search" title="Clear search" disabled>×</button></div>
+            <button class="home-button" id="home-button" type="button" aria-label="Go to music library root" title="Music library root" disabled><i data-lucide="house" aria-hidden="true"></i></button>
+            <div class="search-box"><i class="search-icon" data-lucide="search" aria-hidden="true"></i><input id="search" type="search" placeholder="Search" aria-label="Search tracks and artists" disabled><button class="clear-search" id="clear-search" type="button" aria-label="Clear search" title="Clear search" disabled><i data-lucide="x" aria-hidden="true"></i></button></div>
           </div>
           <div class="action-row">
-            <a class="home-button settings-button" href="./settings.html" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.8v2.1m0 14.2v2.1M2.8 12h2.1m14.2 0h2.1M5.5 5.5 7 7m10 10 1.5 1.5m0-13L17 7M7 17l-1.5 1.5"/><circle cx="12" cy="12" r="8.4"/></svg></a>
+            <a class="home-button settings-button" href="./settings.html" aria-label="Settings" title="Settings"><i data-lucide="settings" aria-hidden="true"></i></a>
             <div class="mode-picker">
-            <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Recently added</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+            <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Recently added</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
             <div class="mode-menu" id="view-menu" role="menu" hidden>
               <button type="button" role="menuitemradio" aria-checked="true" data-view="recent"><span>Recently added</span><span class="mode-count" id="recent-count">0</span></button>
               <button type="button" role="menuitemradio" aria-checked="false" data-view="favorites"><span>Favorites</span><span class="mode-count" id="favorites-count">0</span></button>
@@ -37,10 +38,10 @@
         </div>
         <h2 class="sr-only" id="library-heading">Music library</h2>
         <span class="track-count sr-only" id="track-count"></span>
-        <div class="notice" id="notice" role="status" aria-live="polite"><span class="notice-mark">✳</span><span id="notice-message"></span></div>
+        <div class="notice" id="notice" role="status" aria-live="polite"><i class="notice-mark" data-lucide="sparkles" aria-hidden="true"></i><span id="notice-message"></span></div>
         <div class="track-list" id="track-list" aria-label="Music library">
           <div class="track-rows" id="table-body" role="list"></div>
-          <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true">◉</div><p>No tracks</p><span></span><a class="empty-settings" id="settings-link" href="./settings.html">Dropbox setup</a></div>
+          <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true"><i data-lucide="disc-3"></i></div><p>No tracks</p><span></span><a class="empty-settings" id="settings-link" href="./settings.html">Dropbox setup</a></div>
         </div>
       </section>
     </main>
@@ -48,15 +49,15 @@
     <footer class="player" id="player" aria-label="Audio player">
       <div class="player-track">
         <div class="now-playing"><strong id="now-title">Nothing playing yet</strong><span id="now-album"></span></div>
-        <button class="icon-button favorite-button" id="now-favorite" type="button" aria-label="Favorite current track" title="Favorite current track" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg></button>
+        <button class="icon-button favorite-button" id="now-favorite" type="button" aria-label="Favorite current track" title="Favorite current track" disabled><i data-lucide="heart" aria-hidden="true"></i></button>
       </div>
       <div class="player-controls">
         <div class="transport">
-          <button class="icon-button transport-secondary" id="shuffle-button" type="button" aria-label="Shuffle off" title="Shuffle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
-          <button class="icon-button" id="previous-button" type="button" aria-label="Previous track" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"/><path d="m19 6-9 6 9 6z" fill="currentColor"/></svg></button>
-          <button class="play-button" id="play-button" type="button" aria-label="Play" disabled><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg><svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h3v14H8zM15 5h3v14h-3z"/></svg></button>
-          <button class="icon-button" id="next-button" type="button" aria-label="Next track" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"/><path d="m5 6 9 6-9 6z" fill="currentColor"/></svg></button>
-          <button class="icon-button transport-secondary" id="repeat-button" type="button" aria-label="Repeat off" title="Repeat off"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg></button>
+          <button class="icon-button transport-secondary" id="shuffle-button" type="button" aria-label="Shuffle off" title="Shuffle"><i data-lucide="shuffle" aria-hidden="true"></i></button>
+          <button class="icon-button" id="previous-button" type="button" aria-label="Previous track" disabled><i data-lucide="skip-back" aria-hidden="true"></i></button>
+          <button class="play-button" id="play-button" type="button" aria-label="Play" disabled><i class="play-icon" data-lucide="play" aria-hidden="true"></i><i class="pause-icon" data-lucide="pause" aria-hidden="true"></i></button>
+          <button class="icon-button" id="next-button" type="button" aria-label="Next track" disabled><i data-lucide="skip-forward" aria-hidden="true"></i></button>
+          <button class="icon-button transport-secondary" id="repeat-button" type="button" aria-label="Repeat off" title="Repeat off"><i data-lucide="repeat" aria-hidden="true"></i></button>
         </div>
         <div class="scrubber-row"><span class="time-label" id="elapsed-time">0:00</span><input id="progress" class="range-input" type="range" min="0" max="100" value="0" aria-label="Track position" disabled><span class="time-label" id="duration-time">0:00</span></div>
       </div>
