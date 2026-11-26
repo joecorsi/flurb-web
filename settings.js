@@ -9,6 +9,9 @@
     status: document.querySelector("#settings-status")
   };
   let token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
+  let refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
+  let tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
+  let refreshPromise = null;
 
   function status(message, error = false) {
     els.status.textContent = message;
@@ -37,24 +40,66 @@
       code_challenge_method: "S256",
       redirect_uri: redirectUri,
       state: csrf,
-      scope: "files.metadata.read files.content.read"
+      scope: "files.metadata.read files.content.read",
+      token_access_type: "offline"
     });
     const authorizationUrl = `https://www.dropbox.com/oauth2/authorize?${params}`;
     if (popup) popup.location.assign(authorizationUrl);
     else location.assign(authorizationUrl);
   }
-  async function dropbox(path, body = {}) {
+  function clearDropboxTokens() {
+    token = "";
+    refreshToken = "";
+    tokenExpiresAt = 0;
+    ["flurb.dropbox.accessToken", "flurb.dropbox.refreshToken", "flurb.dropbox.tokenExpiresAt"].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+    els.connect.textContent = "Reconnect Dropbox";
+  }
+  async function ensureAccessToken(force = false) {
+    if (!force && token && (!tokenExpiresAt || Date.now() < tokenExpiresAt - 60_000)) return token;
+    if (!refreshToken) {
+      if (token && !force) return token;
+      throw new Error("Reconnect Dropbox once to enable a lasting session.");
+    }
+    if (!refreshPromise) {
+      refreshPromise = (async () => {
+        const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: APP_KEY });
+        const response = await fetch("https://api.dropbox.com/oauth2/token", {
+          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (/invalid_grant|invalid_refresh_token/i.test(`${result.error || ""} ${result.error_description || ""}`)) clearDropboxTokens();
+          throw new Error(result.error_description || result.error || "Could not renew your Dropbox session.");
+        }
+        token = result.access_token;
+        tokenExpiresAt = Date.now() + (Number(result.expires_in) || 14_400) * 1000;
+        localStorage.setItem("flurb.dropbox.accessToken", token);
+        localStorage.setItem("flurb.dropbox.tokenExpiresAt", String(tokenExpiresAt));
+        sessionStorage.setItem("flurb.dropbox.accessToken", token);
+        sessionStorage.setItem("flurb.dropbox.tokenExpiresAt", String(tokenExpiresAt));
+        return token;
+      })().finally(() => { refreshPromise = null; });
+    }
+    return refreshPromise;
+  }
+  async function dropbox(path, body = {}, retried = false) {
+    const accessToken = await ensureAccessToken();
     const response = await fetch(`${API}${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 401 && refreshToken && !retried) {
+        await ensureAccessToken(true);
+        return dropbox(path, body, true);
+      }
       if (response.status === 401) {
-        token = "";
-        localStorage.removeItem("flurb.dropbox.accessToken");
-        sessionStorage.removeItem("flurb.dropbox.accessToken");
+        clearDropboxTokens();
       }
       throw new Error(result.error_summary || result.error?.[".tag"] || `Dropbox request failed (${response.status}).`);
     }
@@ -100,6 +145,8 @@
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "flurb-dropbox-connected") return;
     token = localStorage.getItem("flurb.dropbox.accessToken") || "";
+    refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
+    tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
     if (!token) return;
     els.connect.textContent = "Change music folder";
     listRootFolders();
