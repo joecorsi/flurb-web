@@ -7,8 +7,8 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-40">
-  <script src="./settings.js?v=mobile-player-12" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-41">
+  <script src="./settings.js?v=mobile-player-13" defer></script>
 </head>
 <body class="settings-page">
   <main class="settings-shell">
@@ -21,6 +21,12 @@
         <div id="settings-folders" class="settings-folders"></div>
       </div>
       <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
+    </section>
+    <section class="settings-panel settings-panel-turso" aria-labelledby="turso-heading">
+      <h1 id="turso-heading">Turso</h1>
+      <label class="settings-field">Database URL<input type="url" placeholder="libsql://…" disabled></label>
+      <label class="settings-field">Auth token<input type="password" placeholder="Auth token" disabled></label>
+      <button class="settings-connect settings-connect-placeholder" type="button" disabled>Connect Turso</button>
     </section>
   </main>
 </body>
