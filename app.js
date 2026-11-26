@@ -2,9 +2,10 @@
   "use strict";
   const API = "https://api.dropboxapi.com/2";
   const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aif", "aifc", "aiff", "au", "alac", "wma", "wm", "m4b", "m4p", "m4r", "mid"]);
+  const ARTWORK_EXTENSIONS = new Set(["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp", "ppm", "bmp"]);
   const $ = (selector) => document.querySelector(selector);
   const els = {
-    audio: $("#audio"), search: $("#search"),
+    audio: $("#audio"), search: $("#search"), home: $("#home-button"),
     trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
     recent: $("#recent-button"), recentCount: $("#recent-count"), favoritesButton: $("#favorites-button"), favoritesCount: $("#favorites-count"), player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
@@ -20,6 +21,9 @@
     folderName: "All files",
     folderHistory: [],
     folderCache: new Map(),
+    folderArtworkEntry: null,
+    artworkLinks: new Map(),
+    artworkLoading: new Set(),
     navigationRequest: 0,
     entries: [],
     tracks: [],
@@ -88,6 +92,7 @@
   function updateConnection() {
     const connected = Boolean(state.token);
     els.search.disabled = !connected || state.folderPicker || !state.libraryFolder;
+    els.home.disabled = !connected || state.folderPicker || !state.libraryFolder;
     if (els.settingsLink) els.settingsLink.hidden = connected;
     updateQuickActions();
   }
@@ -108,6 +113,12 @@
       return loadLibraryFolder(root, state.libraryFolder.name).catch((error) => showNotice(friendlyError(error), "error"));
     }
     loadLibraryFolder(previous.path, previous.name).catch((error) => showNotice(friendlyError(error), "error"));
+  }
+  function goHomeLibrary() {
+    if (!state.libraryFolder?.path_lower || state.folderPicker) return;
+    state.folderHistory = [];
+    history.replaceState({ flurbRootGuard: true }, "", location.href);
+    loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name).catch((error) => showNotice(friendlyError(error), "error"));
   }
   function installHistoryNavigation() {
     history.replaceState({ flurbRootGuard: true }, "", location.href);
@@ -164,7 +175,7 @@
     els.recent.setAttribute("aria-pressed", String(state.viewMode === "recent"));
     els.favoritesButton.classList.toggle("active", state.viewMode === "favorites");
     els.favoritesButton.setAttribute("aria-pressed", String(state.viewMode === "favorites"));
-    els.recentCount.textContent = String(state.entries.length);
+    els.recentCount.textContent = String(state.entries.filter(isAudio).length);
     els.favoritesCount.textContent = String(state.favorites.size);
   }
   async function connectLibrary() {
@@ -186,11 +197,44 @@
     return entries;
   }
   const isFolder = (entry) => entry[".tag"] === "folder";
+  const isArtwork = (entry) => entry[".tag"] === "file" && ARTWORK_EXTENSIONS.has(entry.name.split(".").pop().toLowerCase());
   const isAudio = (entry) => {
     if (entry[".tag"] !== "file") return false;
     const extension = entry.name.split(".").pop().toLowerCase();
     return AUDIO_EXTENSIONS.has(extension);
   };
+  function chooseFolderArtwork(entries) {
+    const images = entries.filter(isArtwork);
+    const priority = ["cover", "folder", "front", "album", "albumart", "artwork"];
+    for (const label of priority) {
+      const match = images.find((image) => image.name.replace(/\.[^.]+$/, "").toLowerCase() === label);
+      if (match) return match;
+    }
+    return images.length === 1 ? images[0] : null;
+  }
+  function loadFolderArtwork(folderPath, imageFile) {
+    if (!imageFile || state.artworkLinks.has(imageFile.id) || state.artworkLoading.has(imageFile.id)) return;
+    state.artworkLoading.add(imageFile.id);
+    fetch("https://content.dropboxapi.com/2/files/get_thumbnail_v2", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${state.token}`,
+        "Dropbox-API-Arg": JSON.stringify({
+          resource: { ".tag": "path", path: imageFile.id },
+          format: { ".tag": "jpeg" }
+        })
+      }
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(`Artwork request failed (${response.status}).`);
+      const objectUrl = URL.createObjectURL(await response.blob());
+      state.artworkLinks.set(imageFile.id, objectUrl);
+      if (state.folderPath === folderPath && state.folderArtworkEntry?.id === imageFile.id) {
+        els.tableBody.querySelectorAll(".track-artwork").forEach((image) => {
+          if (image.dataset.folderPath === folderPath) image.src = objectUrl;
+        });
+      }
+    }).catch(() => {}).finally(() => state.artworkLoading.delete(imageFile.id));
+  }
   async function openFolderPicker() {
     state.navigationRequest += 1;
     els.audio.pause();
@@ -207,6 +251,7 @@
     state.folderHistory = [];
     els.search.disabled = true;
     state.folderPath = "";
+    state.folderArtworkEntry = null;
     state.folderName = "Choose a folder";
     state.displayLimit = 100;
     els.search.value = "";
@@ -231,6 +276,7 @@
     state.folderPicker = false;
     state.folderHistory = [];
     state.folderCache.clear();
+    state.folderArtworkEntry = null;
     updateConnection();
     await loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name);
   }
@@ -252,6 +298,7 @@
     state.displayLimit = 100;
     if (state.folderCache.has(path)) {
       state.entries = state.folderCache.get(path);
+      state.folderArtworkEntry = chooseFolderArtwork(state.entries);
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       updateQuickActions();
       renderTracks();
@@ -262,8 +309,9 @@
       // Browse one level at a time. Every request is checked against the one selected library root.
       const entries = await listFolder(path, false);
       if (request !== state.navigationRequest) return;
-      state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
+      state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry) || isArtwork(entry)) && isInsideLibrary(entry));
       state.folderCache.set(path, state.entries);
+      state.folderArtworkEntry = chooseFolderArtwork(state.entries);
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       updateQuickActions();
       renderTracks();
@@ -332,6 +380,7 @@
       }, { rootMargin: "500px 0px" });
       state.listObserver.observe(row);
     }
+    if (state.folderArtworkEntry) loadFolderArtwork(state.folderPath, state.folderArtworkEntry);
   }
   function renderFolderPicker() {
     state.listObserver?.disconnect();
@@ -402,6 +451,18 @@
     }
     const copy = document.createElement("div");
     copy.className = "track-copy";
+    if (state.folderArtworkEntry) {
+      const artwork = document.createElement("img");
+      artwork.className = "track-artwork";
+      artwork.alt = "";
+      artwork.loading = "lazy";
+      artwork.dataset.folderPath = state.folderPath;
+      const cachedArtwork = state.artworkLinks.get(state.folderArtworkEntry.id);
+      if (cachedArtwork) artwork.src = cachedArtwork;
+      row.append(leading, artwork);
+    } else {
+      row.append(leading);
+    }
     const title = document.createElement("span");
     title.className = "track-name";
     title.textContent = track.name.replace(/\.[^.]+$/, "");
@@ -418,7 +479,7 @@
     favorite.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg>';
     favorite.addEventListener("click", () => toggleFavorite(track));
     actions.append(favorite);
-    row.append(leading, copy, actions);
+    row.append(copy, actions);
     row.addEventListener("dblclick", () => playTrack(track));
     return row;
   }
@@ -519,6 +580,7 @@
     updateTransport();
   }
   els.search.addEventListener("input", () => { state.displayLimit = 100; renderTracks(); });
+  els.home.addEventListener("click", goHomeLibrary);
   els.recent.addEventListener("click", () => { state.viewMode = "recent"; updateQuickActions(); renderTracks(); });
   els.favoritesButton.addEventListener("click", () => { state.viewMode = "favorites"; updateQuickActions(); renderTracks(); });
   els.play.addEventListener("click", () => {
