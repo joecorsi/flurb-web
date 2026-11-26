@@ -2,10 +2,9 @@
   "use strict";
   const API = "https://api.dropboxapi.com/2";
   const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aif", "aifc", "aiff", "au", "alac", "wma", "wm", "m4b", "m4p", "m4r", "mid"]);
-  const ARTWORK_EXTENSIONS = new Set(["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp", "ppm", "bmp"]);
   const $ = (selector) => document.querySelector(selector);
   const els = {
-    audio: $("#audio"), search: $("#search"), home: $("#home-button"),
+    audio: $("#audio"), search: $("#search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
     trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
     recent: $("#recent-button"), recentCount: $("#recent-count"), favoritesButton: $("#favorites-button"), favoritesCount: $("#favorites-count"), player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
@@ -21,9 +20,12 @@
     folderName: "All files",
     folderHistory: [],
     folderCache: new Map(),
-    folderArtworkEntry: null,
     artworkLinks: new Map(),
     artworkLoading: new Set(),
+    artworkElements: new Map(),
+    artworkObserver: null,
+    artworkQueue: [],
+    activeArtworkDownloads: 0,
     navigationRequest: 0,
     entries: [],
     tracks: [],
@@ -197,43 +199,175 @@
     return entries;
   }
   const isFolder = (entry) => entry[".tag"] === "folder";
-  const isArtwork = (entry) => entry[".tag"] === "file" && ARTWORK_EXTENSIONS.has(entry.name.split(".").pop().toLowerCase());
   const isAudio = (entry) => {
     if (entry[".tag"] !== "file") return false;
     const extension = entry.name.split(".").pop().toLowerCase();
     return AUDIO_EXTENSIONS.has(extension);
   };
-  function chooseFolderArtwork(entries) {
-    const images = entries.filter(isArtwork);
-    const priority = ["cover", "folder", "front", "album", "albumart", "artwork"];
-    for (const label of priority) {
-      const match = images.find((image) => image.name.replace(/\.[^.]+$/, "").toLowerCase() === label);
-      if (match) return match;
-    }
-    return images.length === 1 ? images[0] : null;
+  const hasId3ArtworkSupport = (track) => track.name.toLowerCase().endsWith(".mp3");
+  function renderBreadcrumbs() {
+    els.breadcrumbs.replaceChildren();
+    const root = state.libraryFolder?.path_lower;
+    if (!root || state.folderPicker) return;
+    const chain = [{ path: root, name: state.libraryFolder.name }, ...state.folderHistory, { path: state.folderPath, name: state.folderName }];
+    const crumbs = chain.filter((item, index) => item.path && (index === 0 || item.path.startsWith(`${root}/`)) && chain.findIndex((candidate) => candidate.path === item.path) === index);
+    crumbs.forEach((item, index) => {
+      if (index) {
+        const divider = document.createElement("span");
+        divider.className = "breadcrumb-divider";
+        divider.textContent = "/";
+        divider.setAttribute("aria-hidden", "true");
+        els.breadcrumbs.append(divider);
+      }
+      const crumb = document.createElement("span");
+      crumb.className = `breadcrumb${index === crumbs.length - 1 ? " current" : ""}`;
+      crumb.textContent = item.name;
+      els.breadcrumbs.append(crumb);
+    });
+    els.breadcrumbs.scrollLeft = els.breadcrumbs.scrollWidth;
   }
-  function loadFolderArtwork(folderPath, imageFile) {
-    if (!imageFile || state.artworkLinks.has(imageFile.id) || state.artworkLoading.has(imageFile.id)) return;
-    state.artworkLoading.add(imageFile.id);
-    fetch("https://content.dropboxapi.com/2/files/get_thumbnail_v2", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${state.token}`,
-        "Dropbox-API-Arg": JSON.stringify({
-          resource: { ".tag": "path", path: imageFile.id },
-          format: { ".tag": "jpeg" }
-        })
+  function id3FrameSize(bytes, offset, version) {
+    if (version === 4) return ((bytes[offset] & 0x7f) << 21) | ((bytes[offset + 1] & 0x7f) << 14) | ((bytes[offset + 2] & 0x7f) << 7) | (bytes[offset + 3] & 0x7f);
+    return new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, false);
+  }
+  function descriptionEnd(bytes, start, encoding) {
+    if (encoding === 1 || encoding === 2) {
+      for (let index = start; index + 1 < bytes.length; index += 2) {
+        if (bytes[index] === 0 && bytes[index + 1] === 0) return index + 2;
       }
-    }).then(async (response) => {
-      if (!response.ok) throw new Error(`Artwork request failed (${response.status}).`);
-      const objectUrl = URL.createObjectURL(await response.blob());
-      state.artworkLinks.set(imageFile.id, objectUrl);
-      if (state.folderPath === folderPath && state.folderArtworkEntry?.id === imageFile.id) {
-        els.tableBody.querySelectorAll(".track-artwork").forEach((image) => {
-          if (image.dataset.folderPath === folderPath) image.src = objectUrl;
+      return bytes.length;
+    }
+    const end = bytes.indexOf(0, start);
+    return end < 0 ? bytes.length : end + 1;
+  }
+  function removeId3Unsynchronization(data) {
+    const clean = new Uint8Array(data.length);
+    let length = 0;
+    for (let index = 0; index < data.length; index += 1) {
+      clean[length++] = data[index];
+      if (data[index] === 0xff && data[index + 1] === 0) index += 1;
+    }
+    return clean.subarray(0, length);
+  }
+  function extractId3Artwork(buffer) {
+    let bytes = new Uint8Array(buffer);
+    if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return null;
+    const version = bytes[3];
+    if (version < 2 || version > 4) return null;
+    let tagSize = ((bytes[6] & 0x7f) << 21) | ((bytes[7] & 0x7f) << 14) | ((bytes[8] & 0x7f) << 7) | (bytes[9] & 0x7f);
+    let tagEnd = Math.min(bytes.length, 10 + tagSize);
+    if (version === 2 && (bytes[5] & 0x40)) return null;
+    if (bytes[5] & 0x80) {
+      const tag = removeId3Unsynchronization(bytes.subarray(10, tagEnd));
+      const clean = new Uint8Array(10 + tag.length);
+      clean.set(bytes.subarray(0, 10));
+      clean.set(tag, 10);
+      bytes = clean;
+      tagSize = tag.length;
+      tagEnd = 10 + tagSize;
+    }
+    let offset = 10;
+    if ((bytes[5] & 0x40) && version === 3 && offset + 4 <= tagEnd) {
+      offset += 4 + new DataView(bytes.buffer, offset, 4).getUint32(0, false);
+    } else if ((bytes[5] & 0x40) && version === 4 && offset + 4 <= tagEnd) {
+      offset += id3FrameSize(bytes, offset, 4);
+    }
+    while (offset < tagEnd) {
+      const headerSize = version === 2 ? 6 : 10;
+      if (offset + headerSize > tagEnd || bytes[offset] === 0) break;
+      const frameId = String.fromCharCode(...bytes.subarray(offset, offset + (version === 2 ? 3 : 4)));
+      const frameSize = version === 2
+        ? (bytes[offset + 3] << 16) | (bytes[offset + 4] << 8) | bytes[offset + 5]
+        : id3FrameSize(bytes, offset + 4, version);
+      if (!frameSize || offset + headerSize + frameSize > tagEnd) break;
+      const payloadStart = offset + headerSize;
+      let payload = bytes.subarray(payloadStart, payloadStart + frameSize);
+      const frameFlags = version === 2 ? 0 : bytes[offset + 9];
+      if ((version === 3 && (frameFlags & 0xc0)) || (version === 4 && (frameFlags & 0x0c))) {
+        offset += headerSize + frameSize;
+        continue;
+      }
+      if (version === 3 && (frameFlags & 0x20)) payload = payload.subarray(1);
+      if (version === 4 && (frameFlags & 0x40)) payload = payload.subarray(1);
+      if (version === 4 && (frameFlags & 0x01)) payload = payload.subarray(4);
+      if (version === 4 && (bytes[offset + 9] & 0x02)) payload = removeId3Unsynchronization(payload);
+      if (frameId === (version === 2 ? "PIC" : "APIC") && payload.length > 5) {
+        const encoding = payload[0];
+        let imageStart;
+        let mime;
+        if (version === 2) {
+          const imageFormat = String.fromCharCode(...payload.subarray(1, 4)).toLowerCase();
+          mime = imageFormat === "png" ? "image/png" : "image/jpeg";
+          imageStart = descriptionEnd(payload, 5, encoding);
+        } else {
+          const mimeEnd = payload.indexOf(0, 1);
+          if (mimeEnd < 0 || mimeEnd + 2 >= payload.length) return null;
+          mime = new TextDecoder().decode(payload.subarray(1, mimeEnd)).toLowerCase();
+          imageStart = descriptionEnd(payload, mimeEnd + 2, encoding);
+        }
+        if (imageStart < payload.length && mime.startsWith("image/")) {
+          return new Blob([payload.subarray(imageStart)], { type: mime });
+        }
+      }
+      offset += headerSize + frameSize;
+    }
+    return null;
+  }
+  function registerTrackArtwork(image, track) {
+    image._flurbTrack = track;
+    let elements = state.artworkElements.get(track.id);
+    if (!elements) state.artworkElements.set(track.id, elements = new Set());
+    elements.add(image);
+    const cached = state.artworkLinks.get(track.id);
+    if (cached) {
+      image.src = cached;
+      image.classList.add("has-artwork");
+      return;
+    }
+    if (!state.artworkObserver && "IntersectionObserver" in window) {
+      state.artworkObserver = new IntersectionObserver((observations) => {
+        observations.forEach((observation) => {
+          if (!observation.isIntersecting) return;
+          state.artworkObserver.unobserve(observation.target);
+          queueTrackArtwork(observation.target._flurbTrack);
         });
-      }
-    }).catch(() => {}).finally(() => state.artworkLoading.delete(imageFile.id));
+      }, { rootMargin: "220px 0px" });
+    }
+    if (state.artworkObserver) state.artworkObserver.observe(image);
+    else queueTrackArtwork(track);
+  }
+  function queueTrackArtwork(track) {
+    if (!track || state.artworkLinks.has(track.id) || state.artworkLoading.has(track.id)) return;
+    state.artworkLoading.add(track.id);
+    state.artworkQueue.push(track);
+    pumpArtworkQueue();
+  }
+  function pumpArtworkQueue() {
+    while (state.activeArtworkDownloads < 2 && state.artworkQueue.length) {
+      const track = state.artworkQueue.shift();
+      state.activeArtworkDownloads += 1;
+      fetch("https://content.dropboxapi.com/2/files/download", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${state.token}`,
+          "Dropbox-API-Arg": JSON.stringify({ path: track.id })
+        }
+      }).then(async (response) => {
+        if (!response.ok) throw new Error(`Track artwork request failed (${response.status}).`);
+        const cover = extractId3Artwork(await response.arrayBuffer());
+        if (!cover) return;
+        const objectUrl = URL.createObjectURL(cover);
+        state.artworkLinks.set(track.id, objectUrl);
+        state.artworkElements.get(track.id)?.forEach((image) => {
+          image.src = objectUrl;
+          image.classList.add("has-artwork");
+        });
+      }).catch(() => {}).finally(() => {
+        state.artworkLoading.delete(track.id);
+        state.activeArtworkDownloads -= 1;
+        pumpArtworkQueue();
+      });
+    }
   }
   async function openFolderPicker() {
     state.navigationRequest += 1;
@@ -249,9 +383,9 @@
     updateTransport();
     state.folderPicker = true;
     state.folderHistory = [];
+    els.breadcrumbs.replaceChildren();
     els.search.disabled = true;
     state.folderPath = "";
-    state.folderArtworkEntry = null;
     state.folderName = "Choose a folder";
     state.displayLimit = 100;
     els.search.value = "";
@@ -276,7 +410,6 @@
     state.folderPicker = false;
     state.folderHistory = [];
     state.folderCache.clear();
-    state.folderArtworkEntry = null;
     updateConnection();
     await loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name);
   }
@@ -295,10 +428,10 @@
     state.folderPicker = false;
     state.folderPath = path;
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
+    renderBreadcrumbs();
     state.displayLimit = 100;
     if (state.folderCache.has(path)) {
       state.entries = state.folderCache.get(path);
-      state.folderArtworkEntry = chooseFolderArtwork(state.entries);
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       updateQuickActions();
       renderTracks();
@@ -309,9 +442,8 @@
       // Browse one level at a time. Every request is checked against the one selected library root.
       const entries = await listFolder(path, false);
       if (request !== state.navigationRequest) return;
-      state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry) || isArtwork(entry)) && isInsideLibrary(entry));
+      state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
       state.folderCache.set(path, state.entries);
-      state.folderArtworkEntry = chooseFolderArtwork(state.entries);
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       updateQuickActions();
       renderTracks();
@@ -344,6 +476,8 @@
   }
   function renderTracks() {
     state.listObserver?.disconnect();
+    state.artworkObserver?.disconnect();
+    state.artworkElements.clear();
     els.tableBody.replaceChildren();
     els.emptyState.hidden = true;
     const query = els.search.value.trim().toLocaleLowerCase();
@@ -380,7 +514,6 @@
       }, { rootMargin: "500px 0px" });
       state.listObserver.observe(row);
     }
-    if (state.folderArtworkEntry) loadFolderArtwork(state.folderPath, state.folderArtworkEntry);
   }
   function renderFolderPicker() {
     state.listObserver?.disconnect();
@@ -435,34 +568,17 @@
   function makeTrackRow(track, index) {
     const row = document.createElement("div");
     row.setAttribute("role", "listitem");
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("aria-label", `Play ${track.name.replace(/\.[^.]+$/, "")}`);
     row.className = `library-row track-row${state.current?.id === track.id ? " is-playing" : ""}`;
-    const leading = document.createElement("span");
-    leading.className = "track-leading";
-    if (state.current?.id === track.id && !els.audio.paused) {
-      leading.innerHTML = '<span class="mini-eq" aria-label="Playing"><i></i><i></i><i></i></span>';
-    } else {
-      const play = document.createElement("button");
-      play.type = "button";
-      play.className = "track-play";
-      play.setAttribute("aria-label", `Play ${track.name}`);
-      play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>';
-      play.addEventListener("click", () => playTrack(track));
-      leading.append(play);
-    }
+    const artwork = document.createElement("img");
+    artwork.className = "track-artwork";
+    artwork.alt = "";
+    artwork.width = 44;
+    artwork.height = 44;
+    if (hasId3ArtworkSupport(track)) registerTrackArtwork(artwork, track);
     const copy = document.createElement("div");
     copy.className = "track-copy";
-    if (state.folderArtworkEntry) {
-      const artwork = document.createElement("img");
-      artwork.className = "track-artwork";
-      artwork.alt = "";
-      artwork.loading = "lazy";
-      artwork.dataset.folderPath = state.folderPath;
-      const cachedArtwork = state.artworkLinks.get(state.folderArtworkEntry.id);
-      if (cachedArtwork) artwork.src = cachedArtwork;
-      row.append(leading, artwork);
-    } else {
-      row.append(leading);
-    }
     const title = document.createElement("span");
     title.className = "track-name";
     title.textContent = track.name.replace(/\.[^.]+$/, "");
@@ -479,8 +595,16 @@
     favorite.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg>';
     favorite.addEventListener("click", () => toggleFavorite(track));
     actions.append(favorite);
-    row.append(copy, actions);
-    row.addEventListener("dblclick", () => playTrack(track));
+    row.append(artwork, copy, actions);
+    row.addEventListener("click", (event) => {
+      if (!event.target.closest("button")) playTrack(track);
+    });
+    row.addEventListener("keydown", (event) => {
+      if ((event.key === "Enter" || event.key === " ") && event.target === row) {
+        event.preventDefault();
+        playTrack(track);
+      }
+    });
     return row;
   }
   async function playTrack(track) {
