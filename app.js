@@ -4,9 +4,11 @@
   const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aif", "aifc", "aiff", "au", "alac", "wma", "wm", "m4b", "m4p", "m4r", "mid"]);
   const $ = (selector) => document.querySelector(selector);
   const els = {
-    audio: $("#audio"), search: $("#search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
+    audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
+    viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
+    recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
     trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
-    recent: $("#recent-button"), recentCount: $("#recent-count"), favoritesButton: $("#favorites-button"), favoritesCount: $("#favorites-count"), player: $("#player"), play: $("#play-button"),
+    player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
     elapsed: $("#elapsed-time"), duration: $("#duration-time"), nowTitle: $("#now-title"), nowAlbum: $("#now-album"), nowFavorite: $("#now-favorite"),
     toast: $("#toast"), settingsLink: $("#settings-link")
@@ -154,6 +156,7 @@
   function updateConnection() {
     const connected = Boolean(state.token);
     els.search.disabled = !connected || state.folderPicker || !state.libraryFolder;
+    els.clearSearch.disabled = els.search.disabled || !els.search.value;
     els.home.disabled = !connected || state.folderPicker || !state.libraryFolder;
     if (els.settingsLink) els.settingsLink.hidden = connected;
     updateQuickActions();
@@ -163,8 +166,25 @@
     const relative = track.path_lower?.slice(root.length).split("/").filter(Boolean) || [];
     return relative.length > 1 ? relative[0] : state.folderName;
   }
+  function playerAlbum(track) {
+    const root = state.libraryFolder?.path_lower || "";
+    const relative = track.path_lower?.slice(root.length).split("/").filter(Boolean) || [];
+    return relative.length > 2 ? relative[1] : relative.length > 1 ? relative[0] : state.folderName;
+  }
+  function updateMediaMetadata(track) {
+    if (!track || !navigator.mediaSession || !window.MediaMetadata) return;
+    const metadata = {
+      title: track.name.replace(/\.[^.]+$/, ""),
+      artist: playerArtist(track),
+      album: playerAlbum(track)
+    };
+    const artwork = state.artworkLinks.get(track.id);
+    if (artwork) metadata.artwork = [{ src: artwork }];
+    try { navigator.mediaSession.metadata = new MediaMetadata(metadata); } catch (_) {}
+  }
   function setPlayerMetadata(track) {
     els.nowAlbum.textContent = playerArtist(track);
+    updateMediaMetadata(track);
   }
   function goBackOneFolder() {
     const root = state.libraryFolder?.path_lower;
@@ -240,12 +260,19 @@
     return true;
   }
   function updateQuickActions() {
-    els.recent.classList.toggle("active", state.viewMode === "recent");
-    els.recent.setAttribute("aria-pressed", String(state.viewMode === "recent"));
-    els.favoritesButton.classList.toggle("active", state.viewMode === "favorites");
-    els.favoritesButton.setAttribute("aria-pressed", String(state.viewMode === "favorites"));
+    els.viewLabel.textContent = state.viewMode === "recent" ? "Recently added" : state.viewMode === "favorites" ? "Favorites" : "Library views";
     els.recentCount.textContent = String(state.entries.filter(isAudio).length);
     els.favoritesCount.textContent = String(state.favorites.size);
+    els.recentOption.setAttribute("aria-checked", String(state.viewMode === "recent"));
+    els.favoritesOption.setAttribute("aria-checked", String(state.viewMode === "favorites"));
+  }
+  function setViewMode(view) {
+    state.viewMode = view;
+    els.viewMenu.hidden = true;
+    els.viewButton.setAttribute("aria-expanded", "false");
+    state.displayLimit = 100;
+    updateQuickActions();
+    renderTracks();
   }
   async function connectLibrary() {
     updateConnection();
@@ -422,6 +449,7 @@
           image.src = objectUrl;
           image.classList.add("has-artwork");
         });
+        if (state.current?.id === track.id) updateMediaMetadata(track);
       }).catch(() => {}).finally(() => {
         state.artworkLoading.delete(track.id);
         state.activeArtworkDownloads -= 1;
@@ -484,6 +512,7 @@
     if (!(path === root || path.startsWith(`${root}/`))) throw new Error("That folder is outside the selected Flurb library.");
     const request = ++state.navigationRequest;
     if (path !== state.folderPath) els.search.value = "";
+    els.clearSearch.disabled = !els.search.value;
     state.viewMode = "library";
     state.folderPicker = false;
     state.folderPath = path;
@@ -721,6 +750,7 @@
     els.progress.disabled = !hasTrack || !Number.isFinite(els.audio.duration);
     els.play.classList.toggle("playing", !els.audio.paused);
     els.play.setAttribute("aria-label", els.audio.paused ? "Play" : "Pause");
+    if (navigator.mediaSession) navigator.mediaSession.playbackState = !hasTrack ? "none" : els.audio.paused ? "paused" : "playing";
   }
   function updateFavoriteButton() {
     const active = Boolean(state.current && state.favorites.has(state.current.id));
@@ -761,12 +791,43 @@
       els.elapsed.textContent = "0:00";
       els.duration.textContent = "0:00";
     }
+    if (Number.isFinite(duration) && duration > 0 && navigator.mediaSession?.setPositionState) {
+      try { navigator.mediaSession.setPositionState({ duration, playbackRate: els.audio.playbackRate || 1, position: Math.min(els.audio.currentTime, duration) }); } catch (_) {}
+    }
     updateTransport();
   }
-  els.search.addEventListener("input", () => { state.displayLimit = 100; renderTracks(); });
+  els.search.addEventListener("input", () => {
+    els.clearSearch.disabled = !els.search.value;
+    state.displayLimit = 100;
+    renderTracks();
+  });
+  els.clearSearch.addEventListener("click", () => {
+    els.search.value = "";
+    els.clearSearch.disabled = true;
+    state.displayLimit = 100;
+    renderTracks();
+    els.search.focus();
+  });
+  els.viewButton.addEventListener("click", () => {
+    els.viewMenu.hidden = !els.viewMenu.hidden;
+    els.viewButton.setAttribute("aria-expanded", String(!els.viewMenu.hidden));
+  });
+  els.recentOption.addEventListener("click", () => setViewMode("recent"));
+  els.favoritesOption.addEventListener("click", () => setViewMode("favorites"));
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".mode-picker")) {
+      els.viewMenu.hidden = true;
+      els.viewButton.setAttribute("aria-expanded", "false");
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.viewMenu.hidden) {
+      els.viewMenu.hidden = true;
+      els.viewButton.setAttribute("aria-expanded", "false");
+      els.viewButton.focus();
+    }
+  });
   els.home.addEventListener("click", goHomeLibrary);
-  els.recent.addEventListener("click", () => { state.viewMode = "recent"; updateQuickActions(); renderTracks(); });
-  els.favoritesButton.addEventListener("click", () => { state.viewMode = "favorites"; updateQuickActions(); renderTracks(); });
   els.play.addEventListener("click", () => {
     if (!state.current) return;
     if (els.audio.paused) els.audio.play().catch((e) => showNotice(friendlyError(e), "error"));
@@ -808,6 +869,19 @@
   els.audio.addEventListener("error", () => {
     if (state.current && !els.audio.paused) showNotice("The audio stream was interrupted. Try playing the track again.", "error");
   });
+
+  if (navigator.mediaSession?.setActionHandler) {
+    const actions = {
+      play: () => els.audio.play().catch((error) => showNotice(friendlyError(error), "error")),
+      pause: () => els.audio.pause(),
+      previoustrack: () => { if (els.audio.currentTime > 3) els.audio.currentTime = 0; else playNext(-1); },
+      nexttrack: () => playNext(1),
+      seekto: (details) => { if (Number.isFinite(details.seekTime)) els.audio.currentTime = details.seekTime; },
+      seekbackward: (details) => { els.audio.currentTime = Math.max(0, els.audio.currentTime - (details.seekOffset || 10)); },
+      seekforward: (details) => { if (Number.isFinite(els.audio.duration)) els.audio.currentTime = Math.min(els.audio.duration, els.audio.currentTime + (details.seekOffset || 10)); }
+    };
+    Object.entries(actions).forEach(([action, handler]) => { try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {} });
+  }
 
   installHistoryNavigation();
   updateConnection();
