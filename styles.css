@@ -1057,6 +1057,7 @@ html, body { touch-action: pan-x pan-y; }
 #progress.range-input::-moz-range-progress { height: 6px; border-radius: 999px; background: #f2f2f2; }
 #progress.range-input::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #f2f2f2; }
 #progress.range-input:disabled::-moz-range-thumb { background: #f2f2f2; }
+.breadcrumb-root svg { width: 16px; height: 16px; stroke-width: 2.2; flex: 0 0 16px; }
 
 /* Show cover art in place of the list, without changing its scroll position. */
 .artwork-viewer {
