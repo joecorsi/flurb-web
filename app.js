@@ -1112,7 +1112,10 @@
   document.addEventListener("pointercancel", finishTitlePointer);
   els.nowPlayingLink.addEventListener("click", (event) => {
     if (state.titleScrollGesture) { event.preventDefault(); state.titleScrollGesture = false; return; }
-    if (state.current) showAlbumInLibrary(state.current);
+    if (state.current) {
+      if (!els.artworkViewer.hidden) closeArtworkViewer();
+      showAlbumInLibrary(state.current);
+    }
   });
   els.playerArtworkButton.addEventListener("click", () => openArtworkViewer(state.current));
   els.artworkViewerClose.addEventListener("click", closeArtworkViewer);
