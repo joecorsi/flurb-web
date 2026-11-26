@@ -993,3 +993,5 @@ html, body { touch-action: pan-x pan-y; }
 /* Keep the root crumb aligned with the square controls and compact menu rows. */
 .breadcrumb-root { flex-basis: var(--top-row-height); width: var(--top-row-height); max-width: var(--top-row-height); }
 .mode-menu button { height: var(--top-row-height); min-height: var(--top-row-height); padding-block: 0; }
+.library-loading-icon { color: #a54fff; }
+.player-loading i { border-color: #a54fff; border-right-color: #f3f3f3; }
