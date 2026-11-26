@@ -1,6 +1,7 @@
 (() => {
   "use strict";
   const APP_KEY = "b7db4q3upd3kspx";
+  if (new URLSearchParams(location.search).get("embedded") === "1") document.body.classList.add("is-embedded");
   const API = "https://api.dropboxapi.com/2";
   const els = {
     connect: document.querySelector("#settings-connect"),
@@ -129,7 +130,8 @@
         button.textContent = folder.name;
         button.addEventListener("click", () => {
           localStorage.setItem("flurb.dropbox.libraryFolder", JSON.stringify({ id: folder.id, path_lower: folder.path_lower, name: folder.name }));
-          location.replace(new URL("./", location.href).href);
+          if (window.parent !== window) window.parent.postMessage({ type: "flurb-library-selected" }, location.origin);
+          else location.replace(new URL("./", location.href).href);
         });
         els.folders.append(button);
       });
