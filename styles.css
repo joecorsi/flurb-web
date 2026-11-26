@@ -688,6 +688,19 @@ html, body, .app-shell, main, .library { width: 100%; max-width: none; }
 .settings-field input { min-height: 44px; padding: 0 .75rem; border: 1px solid #343638; border-radius: 4px; color: #aaa; background: #171819; font: .85rem var(--sans); }
 .settings-field input:disabled { opacity: .55; }
 .settings-connect-placeholder:disabled { opacity: .45; cursor: default; }
+.mode-menu .view-option-icon { flex: 0 0 16px; width: 16px; height: 16px; color: #a54fff; stroke-width: 2; }
+.mode-menu .view-option-label { flex: 1 1 auto; min-width: 0; }
+.settings-account { display: flex; flex-direction: column; gap: .55rem; margin: .85rem 0; padding: .8rem 0; border-block: 1px solid #343638; }
+.settings-account[hidden] { display: none !important; }
+.settings-account > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); align-items: baseline; gap: .6rem; }
+.settings-account dt { color: #a0a1a4; font-size: .76rem; }
+.settings-account dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: #eee; font-size: .82rem; }
+.settings-reconnect { margin: .1rem 0 .8rem; padding: 0; border: 0; color: #a54fff; background: transparent; font: 500 .78rem var(--sans); text-align: left; cursor: pointer; }
+.settings-reconnect:hover { color: #c28aff; }
+.settings-reconnect[hidden] { display: none !important; }
+.library-letter-row { display: flex !important; height: var(--search-row-height); min-height: var(--search-row-height); align-items: center; padding: 0; }
+.library-letter-marker { display: grid; flex: 0 0 44px; width: 44px; height: 100%; place-items: center; color: #a54fff; font: 700 1.25rem/1 var(--sans); }
+.library-letter-row.is-unknown .library-letter-marker { font-size: .58rem; letter-spacing: -.05em; }
 .settings-library[hidden] { display: none; }
 .settings-folders { display: flex; flex-direction: column; gap: .35rem; }
 .settings-folder { width: 100%; min-height: 3.75rem; padding: .65rem .75rem; border: 1px solid #343638; border-radius: 4px; color: #f1f1f2; background: #171819; text-align: left; font: 500 .95rem var(--sans); cursor: pointer; }
@@ -1036,7 +1049,7 @@ html, body { touch-action: pan-x pan-y; }
 .brand-mark i { background: #a54fff; }
 .empty-glyph { color: #a54fff; }
 .transport-secondary.active { color: #a54fff; }
-.breadcrumb-root svg path { fill: #fff; }
+.breadcrumb-root.favorites-root svg path { fill: #fff; }
 
 /* Slim seek bar: white elapsed track, charcoal remainder, and a quiet gray thumb. */
 #progress.range-input {
