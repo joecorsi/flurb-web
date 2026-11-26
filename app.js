@@ -3,6 +3,9 @@
   const API = "https://api.dropboxapi.com/2";
   const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aif", "aifc", "aiff", "au", "alac", "wma", "wm", "m4b", "m4p", "m4r", "mid"]);
   const $ = (selector) => document.querySelector(selector);
+  function renderLucideIcons(root = document) {
+    if (window.lucide?.createIcons) window.lucide.createIcons({ root });
+  }
   const els = {
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
@@ -643,6 +646,7 @@
     rows.slice(0, state.displayLimit).forEach(({ kind, item }, index) => {
       els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
     });
+    renderLucideIcons(els.tableBody);
     const remaining = rows.length - state.displayLimit;
     if (remaining > 0) {
       const row = document.createElement("div");
@@ -664,6 +668,7 @@
     els.trackCount.textContent = "· choose one folder";
     const folders = state.entries.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
     folders.slice(0, state.displayLimit).forEach((folder, index) => els.tableBody.append(makeFolderRow(folder, index)));
+    renderLucideIcons(els.tableBody);
     if (folders.length > state.displayLimit) {
       const sentinel = document.createElement("div");
       sentinel.className = "list-sentinel";
@@ -718,7 +723,7 @@
     row.setAttribute("aria-label", state.folderPicker ? `Select ${folder.name} as your library` : `Open ${folder.name}`);
     const leading = document.createElement("span");
     leading.className = "track-leading";
-    leading.innerHTML = '<svg class="folder-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h5l2 2h8A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
+    leading.innerHTML = '<i class="folder-icon" data-lucide="folder" aria-hidden="true"></i>';
     const copy = document.createElement("span");
     copy.className = "track-copy";
     const title = document.createElement("span");
@@ -768,10 +773,10 @@
     favorite.type = "button";
     favorite.className = `icon-button track-favorite${state.favorites.has(track.id) ? " active" : ""}`;
     favorite.setAttribute("aria-label", state.favorites.has(track.id) ? `Remove ${track.name} from favorites` : `Favorite ${track.name}`);
-    favorite.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg>';
+    favorite.innerHTML = '<i data-lucide="heart" aria-hidden="true"></i>';
     favorite.addEventListener("click", (event) => { event.stopPropagation(); toggleFavorite(track); });
     const overflow = document.createElement("div"); overflow.className = "track-overflow";
-    const more = document.createElement("button"); more.type = "button"; more.className = "icon-button track-more"; more.setAttribute("aria-label", `More actions for ${track.name}`); more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>';
+    const more = document.createElement("button"); more.type = "button"; more.className = "icon-button track-more"; more.setAttribute("aria-label", `More actions for ${track.name}`); more.innerHTML = '<i data-lucide="ellipsis" aria-hidden="true"></i>';
     const menu = document.createElement("div"); menu.className = "track-overflow-menu"; menu.hidden = true;
     const add = document.createElement("button"); add.type = "button"; add.textContent = "Add to playlist";
     const submenu = document.createElement("div"); submenu.className = "playlist-submenu"; submenu.hidden = true;
@@ -988,6 +993,7 @@
   }
 
   installHistoryNavigation();
+  renderLucideIcons();
   updateConnection();
   updateTransport();
   handleOAuthReturn().then((handled) => { if (!handled && state.token) connectLibrary(); });
