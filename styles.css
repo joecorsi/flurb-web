@@ -936,3 +936,14 @@ body.is-embedded .settings-back { display: none; }
 .artist-row .folder-leading { color: #a54fff; background: #34312e; }
 .track-row, .folder-row { align-items: center; padding-block: 2px; }
 .track-artwork-shell, .folder-leading { align-self: center; }
+
+.track-row, .folder-row {
+  display: grid !important;
+  grid-template-columns: 2.75rem minmax(0, 1fr) auto;
+  align-items: center !important;
+  align-content: center;
+  height: var(--search-row-height);
+  min-height: var(--search-row-height);
+  padding: 0;
+}
+.track-artwork-shell, .folder-leading { align-self: center !important; justify-self: start; margin: 0; }
