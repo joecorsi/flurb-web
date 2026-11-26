@@ -418,8 +418,8 @@ h1 em { color: #9dbfff; font-weight: 400; font-style: italic; }
   --text: #f1f1f2;
   --muted: #a0a1a4;
   --dim: #77797d;
-  --lime: #1680ff;
-  --lime-dark: #1680ff;
+  --lime: #a54fff;
+  --lime-dark: #a54fff;
   --orange: #eb8275;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --display: var(--sans);
@@ -519,7 +519,7 @@ main { width: 100%; max-width: none; margin: 0; padding: 0; }
 .favorite-button.active, .track-favorite.active { color: #a54fff; }
 .favorite-button.active svg, .track-favorite.active svg { fill: currentColor; }
 .empty-state { min-height: 34vh; color: #aaa; }
-.empty-glyph { width: 2.3rem; height: 2.3rem; margin-bottom: .5rem; border-radius: 4px; color: #1680ff; }
+.empty-glyph { width: 2.3rem; height: 2.3rem; margin-bottom: .5rem; border-radius: 4px; color: #a54fff; }
 .empty-state p { color: #e2e3e4; font-size: .95rem; font-weight: 500; }
 .empty-state span { display: none; }
 .notice { margin: .6rem .75rem 0; border-radius: 4px; color: #c5d9f1; background: #1c2025; font: .82rem var(--sans); }
@@ -681,6 +681,13 @@ html, body, .app-shell, main, .library { width: 100%; max-width: none; }
 .settings-panel h2 { margin: 1.4rem 0 .65rem; color: #dedede; font: 600 .95rem var(--sans); }
 .settings-connect { min-height: 2.85rem; padding: 0 .9rem; border: 0; border-radius: 4px; color: #fff; background: #0876f9; font-weight: 600; cursor: pointer; }
 .settings-connect:hover { background: #2588ff; }
+.settings-connect.is-select-folder { background: #a54fff; color: #fff; }
+.settings-connect.is-select-folder:hover { background: #b86cff; }
+.settings-panel-turso { margin-top: 10px; }
+.settings-field { display: flex; flex-direction: column; gap: .4rem; margin: .8rem 0; color: #a0a1a4; font-size: .8rem; }
+.settings-field input { min-height: 44px; padding: 0 .75rem; border: 1px solid #343638; border-radius: 4px; color: #aaa; background: #171819; font: .85rem var(--sans); }
+.settings-field input:disabled { opacity: .55; }
+.settings-connect-placeholder:disabled { opacity: .45; cursor: default; }
 .settings-library[hidden] { display: none; }
 .settings-folders { display: flex; flex-direction: column; gap: .35rem; }
 .settings-folder { width: 100%; min-height: 3.75rem; padding: .65rem .75rem; border: 1px solid #343638; border-radius: 4px; color: #f1f1f2; background: #171819; text-align: left; font: 500 .95rem var(--sans); cursor: pointer; }
@@ -1023,6 +1030,13 @@ html, body { touch-action: pan-x pan-y; }
 .player-artwork-shell .artwork-placeholder { width: 26px; height: 26px; }
 .scrubber-row { grid-area: seek; }
 .transport { grid-area: transport; }
+
+/* Purple accent icons and a solid white heart in the Favorites root. */
+:root { --lime: #a54fff; --lime-dark: #a54fff; }
+.brand-mark i { background: #a54fff; }
+.empty-glyph { color: #a54fff; }
+.transport-secondary.active { color: #a54fff; }
+.breadcrumb-root svg path { fill: #fff; }
 
 /* Slim seek bar: white elapsed track, charcoal remainder, and a quiet gray thumb. */
 #progress.range-input {
