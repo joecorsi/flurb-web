@@ -9,9 +9,9 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-14">
+  <link rel="stylesheet" href="./styles.css?v=mobile-player-16">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script src="./app.js?v=mobile-player-17" defer></script>
+  <script src="./app.js?v=mobile-player-19" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -23,7 +23,7 @@
             <div class="search-box"><i class="search-icon" data-lucide="search" aria-hidden="true"></i><input id="search" type="search" placeholder="Search" aria-label="Search tracks and artists" disabled><button class="clear-search" id="clear-search" type="button" aria-label="Clear search" title="Clear search" disabled><i data-lucide="x" aria-hidden="true"></i></button></div>
           </div>
           <div class="action-row">
-            <a class="home-button settings-button" href="./settings.html" aria-label="Settings" title="Settings"><i data-lucide="settings" aria-hidden="true"></i></a>
+            <button class="home-button settings-button" id="settings-button" type="button" aria-label="Settings" title="Settings"><i data-lucide="settings" aria-hidden="true"></i></button>
             <div class="mode-picker">
             <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Recently added</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
             <div class="mode-menu" id="view-menu" role="menu" hidden>
@@ -41,14 +41,14 @@
         <div class="notice" id="notice" role="status" aria-live="polite"><i class="notice-mark" data-lucide="sparkles" aria-hidden="true"></i><span id="notice-message"></span></div>
         <div class="track-list" id="track-list" aria-label="Music library">
           <div class="track-rows" id="table-body" role="list"></div>
-          <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true"><i data-lucide="disc-3"></i></div><p>No tracks</p><span></span><a class="empty-settings" id="settings-link" href="./settings.html">Dropbox setup</a></div>
+          <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true"><i id="empty-icon" data-lucide="disc-3"></i></div><p>No tracks</p><span></span><a class="empty-settings" id="settings-link" href="./settings.html">Dropbox setup</a></div>
         </div>
       </section>
     </main>
 
     <footer class="player" id="player" aria-label="Audio player">
       <div class="player-track">
-        <div class="now-playing"><strong id="now-title">Nothing playing yet</strong><span id="now-album"></span></div>
+        <button class="now-playing now-playing-link" id="now-playing-link" type="button" aria-label="Open the current track folder" disabled><strong id="now-title">Nothing playing yet</strong><span id="now-album"></span></button>
         <button class="icon-button favorite-button" id="now-favorite" type="button" aria-label="Favorite current track" title="Favorite current track" disabled><i data-lucide="heart" aria-hidden="true"></i></button>
       </div>
       <div class="player-controls">
@@ -62,6 +62,13 @@
         <div class="scrubber-row"><span class="time-label" id="elapsed-time">0:00</span><input id="progress" class="range-input" type="range" min="0" max="100" value="0" aria-label="Track position" disabled><span class="time-label" id="duration-time">0:00</span></div>
       </div>
     </footer>
+    <div class="settings-overlay" id="settings-overlay" hidden>
+      <button class="settings-scrim" type="button" aria-label="Close settings" data-close-settings></button>
+      <section class="settings-dialog" role="dialog" aria-modal="true" aria-label="Flurb settings">
+        <header class="settings-dialog-header"><strong>Settings</strong><button class="icon-button settings-close" id="settings-close" type="button" aria-label="Close settings"><i data-lucide="x" aria-hidden="true"></i></button></header>
+        <iframe class="settings-frame" id="settings-frame" src="./settings.html?embedded=1" title="Flurb settings"></iframe>
+      </section>
+    </div>
     <audio id="audio" preload="metadata"></audio>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>
