@@ -767,8 +767,16 @@
     const root = state.libraryFolder?.path_lower || "";
     if (!parent || !(parent === root || parent.startsWith(`${root}/`))) return;
     const name = parent === root ? state.libraryFolder.name : parent.split("/").pop();
-    state.viewMode = "library"; state.activePlaylistId = null; state.folderHistory = [];
-    localStorage.setItem("flurb.dropbox.actionView", "library"); updateQuickActions(); renderBreadcrumbs();
+    const relativeSegments = parent === root ? [] : parent.slice(root.length).split("/").filter(Boolean);
+    const displayParent = (track.path_display || parent).slice(0, (track.path_display || parent).lastIndexOf("/"));
+    const displaySegments = displayParent.split("/").filter(Boolean).slice(-relativeSegments.length);
+    let breadcrumbPath = root;
+    state.folderHistory = relativeSegments.slice(0, -1).map((segment, index) => {
+      breadcrumbPath += `/${segment}`;
+      return { path: breadcrumbPath, name: displaySegments[index] || segment };
+    });
+    state.viewMode = "library"; state.activePlaylistId = null;
+    localStorage.setItem("flurb.dropbox.actionView", "library"); updateQuickActions();
     loadLibraryFolder(parent, name).catch((error) => showNotice(friendlyError(error), "error"));
   }
   function makeFolderRow(folder, index = 0) {
