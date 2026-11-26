@@ -7,6 +7,7 @@
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
     recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
+    playlistsOption: $('[data-view="playlists"]'), playlistsCount: $("#playlists-count"), libraryOption: $('[data-view="library"]'),
     trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
     player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
@@ -19,7 +20,9 @@
     tokenExpiresAt: Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0),
     refreshPromise: null,
     libraryFolder: null,
-    viewMode: "library",
+    viewMode: ["recent", "favorites", "playlists", "library"].includes(localStorage.getItem("flurb.dropbox.viewMode")) ? localStorage.getItem("flurb.dropbox.viewMode") : "recent",
+    activePlaylistId: null,
+    playlists: [],
     folderPicker: false,
     folderPath: "",
     folderName: "All files",
@@ -48,6 +51,10 @@
   try {
     const savedItems = JSON.parse(localStorage.getItem("flurb.dropbox.favoriteItems") || "[]");
     if (Array.isArray(savedItems)) state.favoriteItems = new Map(savedItems.filter((track) => track?.id).map((track) => [track.id, track]));
+  } catch (_) {}
+  try {
+    const savedPlaylists = JSON.parse(localStorage.getItem("flurb.dropbox.playlists") || "[]");
+    if (Array.isArray(savedPlaylists)) state.playlists = savedPlaylists.filter((playlist) => playlist?.id && playlist?.name && Array.isArray(playlist.tracks));
   } catch (_) {}
   try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) {}
   els.audio.volume = 0.8;
@@ -187,6 +194,12 @@
     updateMediaMetadata(track);
   }
   function goBackOneFolder() {
+    if (state.viewMode === "playlists" && state.activePlaylistId) {
+      state.activePlaylistId = null;
+      renderBreadcrumbs();
+      renderTracks();
+      return;
+    }
     const root = state.libraryFolder?.path_lower;
     if (!root || state.folderPicker || state.folderPath === root) return;
     const previous = state.folderHistory.pop();
@@ -197,6 +210,13 @@
     loadLibraryFolder(previous.path, previous.name).catch((error) => showNotice(friendlyError(error), "error"));
   }
   function goHomeLibrary() {
+    if (state.viewMode === "playlists") {
+      state.activePlaylistId = null;
+      state.folderHistory = [];
+      renderBreadcrumbs();
+      renderTracks();
+      return;
+    }
     if (!state.libraryFolder?.path_lower || state.folderPicker) return;
     state.folderHistory = [];
     history.replaceState({ flurbRootGuard: true }, "", location.href);
@@ -208,6 +228,10 @@
     window.addEventListener("popstate", () => {
       const root = state.libraryFolder?.path_lower;
       const atLibraryRoot = !root || state.folderPicker || !state.folderPath || state.folderPath === root;
+      if (state.viewMode === "playlists" && state.activePlaylistId) {
+        goBackOneFolder();
+        return;
+      }
       if (atLibraryRoot) {
         // Keep iOS standalone-app edge swipes inside Flurb at the library boundary.
         history.pushState({ flurbRootGuard: true }, "", location.href);
@@ -260,19 +284,31 @@
     return true;
   }
   function updateQuickActions() {
-    els.viewLabel.textContent = state.viewMode === "recent" ? "Recently added" : state.viewMode === "favorites" ? "Favorites" : "Library views";
+    const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
+    els.viewLabel.textContent = state.viewMode === "recent" ? "Recently added" : state.viewMode === "favorites" ? "Favorites" : state.viewMode === "playlists" ? "Playlists" : "Library";
     els.recentCount.textContent = String(state.entries.filter(isAudio).length);
     els.favoritesCount.textContent = String(state.favorites.size);
+    els.playlistsCount.textContent = String(state.playlists.length);
     els.recentOption.setAttribute("aria-checked", String(state.viewMode === "recent"));
     els.favoritesOption.setAttribute("aria-checked", String(state.viewMode === "favorites"));
+    els.playlistsOption.setAttribute("aria-checked", String(state.viewMode === "playlists"));
+    els.libraryOption.setAttribute("aria-checked", String(state.viewMode === "library"));
+    els.home.title = state.viewMode === "playlists" ? playlist ? "Back to playlists" : "Playlists" : `Back to ${els.viewLabel.textContent}`;
+    els.home.setAttribute("aria-label", els.home.title);
   }
   function setViewMode(view) {
     state.viewMode = view;
+    state.activePlaylistId = null;
+    state.folderHistory = [];
+    localStorage.setItem("flurb.dropbox.viewMode", view);
     els.viewMenu.hidden = true;
     els.viewButton.setAttribute("aria-expanded", "false");
     state.displayLimit = 100;
     updateQuickActions();
-    renderTracks();
+    if (state.libraryFolder?.path_lower) {
+      history.replaceState({ flurbRootGuard: true }, "", location.href);
+      loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name).catch((error) => showNotice(friendlyError(error), "error"));
+    } else renderTracks();
   }
   async function connectLibrary() {
     updateConnection();
@@ -302,6 +338,15 @@
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
     const root = state.libraryFolder?.path_lower;
+    if (state.viewMode === "playlists") {
+      const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
+      const names = ["Playlists", ...(playlist ? [playlist.name] : [])];
+      names.forEach((name, index) => {
+        if (index) { const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; els.breadcrumbs.append(divider); }
+        const crumb = document.createElement("span"); crumb.className = `breadcrumb${index === names.length - 1 ? " current" : ""}`; crumb.textContent = name; els.breadcrumbs.append(crumb);
+      });
+      return;
+    }
     if (!root || state.folderPicker) return;
     const chain = [{ path: root, name: state.libraryFolder.name }, ...state.folderHistory, { path: state.folderPath, name: state.folderName }];
     const crumbs = chain.filter((item, index) => item.path && (index === 0 || item.path.startsWith(`${root}/`)) && chain.findIndex((candidate) => candidate.path === item.path) === index);
@@ -513,7 +558,6 @@
     const request = ++state.navigationRequest;
     if (path !== state.folderPath) els.search.value = "";
     els.clearSearch.disabled = !els.search.value;
-    state.viewMode = "library";
     state.folderPicker = false;
     state.folderPath = path;
     state.folderName = name || (path === root ? state.libraryFolder.name : path.split("/").pop());
@@ -561,6 +605,7 @@
       return [...known.values()].filter((track) => state.favorites.has(track.id) && isInsideLibrary(track));
     }
     if (state.viewMode === "recent") return state.entries.filter(isAudio).sort((a, b) => new Date(b.server_modified || 0) - new Date(a.server_modified || 0));
+    if (state.viewMode === "playlists") return state.playlists.find((playlist) => playlist.id === state.activePlaylistId)?.tracks || [];
     return state.tracks;
   }
   function renderTracks() {
@@ -572,9 +617,17 @@
     const query = els.search.value.trim().toLocaleLowerCase();
     const tracks = filteredTracks();
     let folders = state.entries.filter(isFolder).filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
-    if (state.viewMode === "favorites") folders = [];
+    if (state.viewMode === "favorites" || state.viewMode === "playlists") folders = [];
     if (state.viewMode === "recent") folders = folders.sort((a, b) => new Date(b.server_modified || 0) - new Date(a.server_modified || 0)).slice(0, 20);
     els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"} · ${folders.length} folder${folders.length === 1 ? "" : "s"}`;
+    if (state.viewMode === "playlists" && !state.activePlaylistId) {
+      const create = document.createElement("button"); create.type = "button"; create.className = "library-row artist-row playlist-create"; create.textContent = "+ New playlist";
+      create.addEventListener("click", createPlaylist); els.tableBody.append(create);
+      state.playlists.filter((playlist) => !query || playlist.name.toLocaleLowerCase().includes(query)).slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((playlist) => els.tableBody.append(makePlaylistRow(playlist)));
+      els.trackCount.textContent = `· ${state.playlists.length} playlist${state.playlists.length === 1 ? "" : "s"}`;
+      if (!state.playlists.length) { els.emptyState.hidden = false; els.emptyState.querySelector("p").textContent = "No playlists"; }
+      return;
+    }
     const rows = [
       ...folders.map((folder) => ({ kind: "folder", item: folder })),
       ...tracks.map((track) => ({ kind: "track", item: track }))
@@ -583,7 +636,7 @@
       : a.item.name.localeCompare(b.item.name, undefined, { numeric: true, sensitivity: "base" }));
     if (!rows.length) {
       els.emptyState.hidden = false;
-      els.emptyState.querySelector("p").textContent = query ? "No results" : state.viewMode === "favorites" ? "No favorites" : "No tracks";
+      els.emptyState.querySelector("p").textContent = query ? "No results" : state.viewMode === "favorites" ? "No favorites" : state.viewMode === "playlists" ? "This playlist is empty" : "No tracks";
       els.emptyState.querySelector("span").textContent = "";
       return;
     }
@@ -623,6 +676,40 @@
       }, { rootMargin: "500px 0px" });
       state.listObserver.observe(sentinel);
     }
+  }
+  function persistPlaylists() {
+    localStorage.setItem("flurb.dropbox.playlists", JSON.stringify(state.playlists));
+    updateQuickActions();
+  }
+  function createPlaylist() {
+    const name = window.prompt("Playlist name");
+    if (!name?.trim()) return;
+    const playlist = { id: crypto.randomUUID(), name: name.trim(), tracks: [] };
+    state.playlists.push(playlist); persistPlaylists();
+    state.activePlaylistId = playlist.id; renderBreadcrumbs(); renderTracks();
+  }
+  function makePlaylistRow(playlist) {
+    const row = document.createElement("button"); row.type = "button"; row.className = "library-row artist-row playlist-row";
+    const copy = document.createElement("span"); copy.className = "track-copy";
+    const title = document.createElement("span"); title.className = "track-name"; title.textContent = playlist.name;
+    const meta = document.createElement("span"); meta.className = "track-meta"; meta.textContent = `${playlist.tracks.length} tracks`;
+    copy.append(title, meta); row.append(copy);
+    row.addEventListener("click", () => { state.activePlaylistId = playlist.id; renderBreadcrumbs(); renderTracks(); });
+    return row;
+  }
+  function addTrackToPlaylist(track, playlist) {
+    if (!playlist.tracks.some((item) => item.id === track.id)) playlist.tracks.push(track);
+    persistPlaylists(); toast(`Added to ${playlist.name}`); renderTracks();
+  }
+  function showAlbumInLibrary(track) {
+    const path = track.path_lower || "";
+    const parent = path.slice(0, path.lastIndexOf("/"));
+    const root = state.libraryFolder?.path_lower || "";
+    if (!parent || !(parent === root || parent.startsWith(`${root}/`))) return;
+    const name = parent === root ? state.libraryFolder.name : parent.split("/").pop();
+    state.viewMode = "library"; state.activePlaylistId = null; state.folderHistory = [];
+    localStorage.setItem("flurb.dropbox.viewMode", "library"); updateQuickActions(); renderBreadcrumbs();
+    loadLibraryFolder(parent, name).catch((error) => showNotice(friendlyError(error), "error"));
   }
   function makeFolderRow(folder, index = 0) {
     const row = document.createElement("button");
@@ -682,8 +769,23 @@
     favorite.className = `icon-button track-favorite${state.favorites.has(track.id) ? " active" : ""}`;
     favorite.setAttribute("aria-label", state.favorites.has(track.id) ? `Remove ${track.name} from favorites` : `Favorite ${track.name}`);
     favorite.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.7c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.8 2.3Z"/></svg>';
-    favorite.addEventListener("click", () => toggleFavorite(track));
-    actions.append(favorite);
+    favorite.addEventListener("click", (event) => { event.stopPropagation(); toggleFavorite(track); });
+    const overflow = document.createElement("div"); overflow.className = "track-overflow";
+    const more = document.createElement("button"); more.type = "button"; more.className = "icon-button track-more"; more.setAttribute("aria-label", `More actions for ${track.name}`); more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>';
+    const menu = document.createElement("div"); menu.className = "track-overflow-menu"; menu.hidden = true;
+    const add = document.createElement("button"); add.type = "button"; add.textContent = "Add to playlist";
+    const submenu = document.createElement("div"); submenu.className = "playlist-submenu"; submenu.hidden = true;
+    state.playlists.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((playlist) => {
+      const choice = document.createElement("button"); choice.type = "button"; choice.textContent = playlist.name;
+      choice.addEventListener("click", (event) => { event.stopPropagation(); menu.hidden = true; addTrackToPlaylist(track, playlist); }); submenu.append(choice);
+    });
+    const create = document.createElement("button"); create.type = "button"; create.textContent = "+ New playlist…";
+    create.addEventListener("click", (event) => { event.stopPropagation(); const name = window.prompt("Playlist name"); if (!name?.trim()) return; let playlist = state.playlists.find((item) => item.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase()); if (!playlist) { playlist = { id: crypto.randomUUID(), name: name.trim(), tracks: [] }; state.playlists.push(playlist); } menu.hidden = true; addTrackToPlaylist(track, playlist); }); submenu.append(create);
+    add.addEventListener("click", (event) => { event.stopPropagation(); submenu.hidden = !submenu.hidden; });
+    const album = document.createElement("button"); album.type = "button"; album.textContent = "Show album in library"; album.addEventListener("click", (event) => { event.stopPropagation(); menu.hidden = true; showAlbumInLibrary(track); });
+    menu.append(add, submenu, album); more.addEventListener("click", (event) => { event.stopPropagation(); document.querySelectorAll(".track-overflow-menu").forEach((other) => { if (other !== menu) other.hidden = true; }); menu.hidden = !menu.hidden; });
+    overflow.append(more, menu);
+    actions.append(favorite, overflow);
     row.append(artwork, copy, actions);
     row.addEventListener("click", (event) => {
       if (!event.target.closest("button")) playTrack(track);
@@ -814,6 +916,8 @@
   });
   els.recentOption.addEventListener("click", () => setViewMode("recent"));
   els.favoritesOption.addEventListener("click", () => setViewMode("favorites"));
+  els.playlistsOption.addEventListener("click", () => setViewMode("playlists"));
+  els.libraryOption.addEventListener("click", () => setViewMode("library"));
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".mode-picker")) {
       els.viewMenu.hidden = true;
