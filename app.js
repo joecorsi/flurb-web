@@ -38,6 +38,7 @@
     artworkObserver: null,
     artworkQueue: [],
     activeArtworkDownloads: 0,
+    titleScrollGesture: false,
     navigationRequest: 0,
     entries: [],
     tracks: [],
@@ -200,7 +201,8 @@
   function updateTitleMarquee() {
     const viewport = els.nowTitleViewport;
     const title = els.nowTitle;
-    viewport.classList.remove("is-overflowing");
+    viewport.classList.remove("is-overflowing", "is-manual-scrolling");
+    viewport.scrollLeft = 0;
     title.style.width = "100%";
     title.style.removeProperty("transform");
     requestAnimationFrame(() => {
@@ -360,12 +362,16 @@
     scroller.className = "breadcrumbs-path";
     els.breadcrumbs.append(scroller);
     const rootLabel = state.viewMode === "recent" ? "recent" : state.viewMode === "favorites" ? "favorites" : state.viewMode === "playlists" ? "playlists" : "lib";
+    let foldersDepth = 0;
     const addCrumb = (name, current, onClick, depth = 0, isRoot = false) => {
       const crumb = document.createElement("button");
       crumb.type = "button";
       crumb.className = `breadcrumb${isRoot ? " breadcrumb-root" : ""}${current ? " current" : ""}`;
       crumb.textContent = name;
-      crumb.style.setProperty("--breadcrumb-opacity", String(Math.max(0.1, 1 - depth * 0.15)));
+      const distanceFromCurrent = state.viewMode === "playlists" ? (current ? 0 : 1) : Math.max(0, foldersDepth - depth);
+      const opacity = Math.max(0.1, 1 - distanceFromCurrent * 0.15);
+      crumb.style.setProperty("--breadcrumb-opacity", String(opacity));
+      if (opacity < 0.45) crumb.classList.add("is-dark");
       if (current) crumb.setAttribute("aria-current", "page");
       crumb.addEventListener("click", onClick);
       scroller.append(crumb);
@@ -381,6 +387,7 @@
     const rootCrumb = { path: root, name: state.libraryFolder.name };
     const folders = [rootCrumb, ...state.folderHistory, ...(state.folderPath && state.folderPath !== root ? [{ path: state.folderPath, name: state.folderName }] : [])]
       .filter((item, index, all) => item.path && (index === 0 || item.path.startsWith(`${root}/`)) && all.findIndex((entry) => entry.path === item.path) === index);
+    foldersDepth = folders.length - 1;
     folders.forEach((item, index) => addCrumb(index === 0 ? rootLabel : item.name, index === folders.length - 1, index === 0 ? goHomeLibrary : () => {
       state.folderHistory = folders.slice(1, index).map(({ path: folderPath, name }) => ({ path: folderPath, name }));
       loadLibraryFolder(item.path, item.name).catch((error) => showNotice(friendlyError(error), "error"));
@@ -1011,7 +1018,27 @@
   els.settingsClose.addEventListener("click", closeSettings);
   els.settingsOverlay.querySelector("[data-close-settings]").addEventListener("click", closeSettings);
   els.settingsOverlay.addEventListener("click", (event) => { if (event.target === els.settingsOverlay) closeSettings(); });
-  els.nowPlayingLink.addEventListener("click", () => { if (state.current) showAlbumInLibrary(state.current); });
+  let titlePointerStart = null;
+  els.nowTitleViewport.addEventListener("pointerdown", (event) => {
+    if (!els.nowTitleViewport.classList.contains("is-overflowing")) return;
+    titlePointerStart = { x: event.clientX, y: event.clientY };
+    els.nowTitleViewport.classList.add("is-manual-scrolling");
+    els.nowTitleViewport.scrollLeft = 0;
+  });
+  document.addEventListener("pointermove", (event) => {
+    if (titlePointerStart && Math.abs(event.clientX - titlePointerStart.x) > 6 && Math.abs(event.clientX - titlePointerStart.x) > Math.abs(event.clientY - titlePointerStart.y)) state.titleScrollGesture = true;
+  });
+  const finishTitlePointer = () => {
+    if (!titlePointerStart) return;
+    titlePointerStart = null;
+    setTimeout(() => { state.titleScrollGesture = false; }, 350);
+  };
+  document.addEventListener("pointerup", finishTitlePointer);
+  document.addEventListener("pointercancel", finishTitlePointer);
+  els.nowPlayingLink.addEventListener("click", (event) => {
+    if (state.titleScrollGesture) { event.preventDefault(); state.titleScrollGesture = false; return; }
+    if (state.current) showAlbumInLibrary(state.current);
+  });
   window.addEventListener("resize", updateTitleMarquee);
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "flurb-library-selected") return;
