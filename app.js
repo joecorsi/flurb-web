@@ -731,6 +731,7 @@
   function makeLibraryLetterRow(letter) {
     const row = document.createElement("div");
     row.className = `library-row library-letter-row${letter === "Unknown" ? " is-unknown" : ""}`;
+    row.dataset.letter = letter;
     row.setAttribute("role", "separator");
     row.setAttribute("aria-label", letter);
     const marker = document.createElement("span");
@@ -738,6 +739,39 @@
     marker.textContent = letter;
     row.append(marker);
     return row;
+  }
+  function groupRowsByLetter(rows, includeUnknown) {
+    const groups = new Map();
+    rows.forEach((row) => {
+      const letter = libraryLetter(row.item.name);
+      if (letter === "Unknown" && !includeUnknown) {
+        if (!groups.has("#")) groups.set("#", []);
+        groups.get("#").push(row);
+        return;
+      }
+      if (!groups.has(letter)) groups.set(letter, []);
+      groups.get(letter).push(row);
+    });
+    const letters = [...groups.keys()].filter((letter) => letter !== "#").sort((a, b) => a === "Unknown" ? 1 : b === "Unknown" ? -1 : a.localeCompare(b));
+    const ordered = [];
+    letters.forEach((letter) => ordered.push({ kind: "letter", letter }, ...groups.get(letter)));
+    ordered.push(...(groups.get("#") || []));
+    return ordered;
+  }
+  function searchLetter() {
+    const first = els.search.value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").charAt(0).toUpperCase();
+    return /^[A-Z]$/.test(first) ? first : "";
+  }
+  function scrollToSearchLetter() {
+    const first = searchLetter();
+    if (!first) return;
+    requestAnimationFrame(() => {
+      const target = [...els.tableBody.querySelectorAll(".library-letter-row")].find((row) => row.dataset.letter === first);
+      if (!target) return;
+      const sticky = document.querySelector(".library-sticky");
+      const offset = target.getBoundingClientRect().top - (sticky?.getBoundingClientRect().height || 0);
+      window.scrollBy({ top: offset, behavior: "smooth" });
+    });
   }
   function renderTracks() {
     setLibraryLoading(false);
@@ -752,12 +786,24 @@
     if (state.viewMode === "favorites" || state.viewMode === "playlists") folders = [];
     if (state.viewMode === "recent") folders = folders.sort((a, b) => new Date(b.server_modified || 0) - new Date(a.server_modified || 0)).slice(0, 20);
     els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"} · ${folders.length} folder${folders.length === 1 ? "" : "s"}`;
+    const atViewRoot = state.viewMode === "playlists"
+      ? !state.activePlaylistId
+      : !state.folderPicker && Boolean(state.libraryFolder?.path_lower) && state.folderPath === state.libraryFolder.path_lower;
     if (state.viewMode === "playlists" && !state.activePlaylistId) {
       const create = document.createElement("button"); create.type = "button"; create.className = "library-row artist-row playlist-create"; create.textContent = "+ New playlist";
       create.addEventListener("click", createPlaylist); els.tableBody.append(create);
-      state.playlists.filter((playlist) => !query || playlist.name.toLocaleLowerCase().includes(query)).slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((playlist) => els.tableBody.append(makePlaylistRow(playlist)));
+      const playlists = state.playlists.filter((playlist) => !query || playlist.name.toLocaleLowerCase().includes(query)).slice().sort((a, b) => a.name.localeCompare(b.name));
+      const playlistRows = playlists.map((item) => ({ kind: "playlist", item }));
+      const renderedPlaylists = groupRowsByLetter(playlistRows, false);
+      const searchHeaderIndex = renderedPlaylists.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
+      if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 1;
+      renderedPlaylists.slice(0, state.displayLimit).forEach(({ kind, item, letter }) => {
+        if (kind === "letter") els.tableBody.append(makeLibraryLetterRow(letter));
+        else els.tableBody.append(makePlaylistRow(item));
+      });
       els.trackCount.textContent = `· ${state.playlists.length} playlist${state.playlists.length === 1 ? "" : "s"}`;
       if (!state.playlists.length) { els.emptyState.hidden = false; els.emptyState.querySelector("p").textContent = "No playlists"; }
+      if (query) scrollToSearchLetter();
       return;
     }
     const rows = [
@@ -772,21 +818,11 @@
       els.emptyState.querySelector("span").textContent = "";
       return;
     }
-    let renderedRows = rows;
-    if (state.viewMode === "library") {
-      const groups = new Map();
-      rows.forEach((row) => {
-        const letter = libraryLetter(row.item.name);
-        if (!groups.has(letter)) groups.set(letter, []);
-        groups.get(letter).push(row);
-      });
-      const letters = [...groups.keys()].sort((a, b) => a === "Unknown" ? 1 : b === "Unknown" ? -1 : a.localeCompare(b));
-      renderedRows = [];
-      letters.forEach((letter) => {
-        renderedRows.push({ kind: "letter", letter });
-        renderedRows.push(...groups.get(letter));
-      });
-    }
+    const renderedRows = atViewRoot
+      ? groupRowsByLetter(rows, state.viewMode === "library")
+      : rows;
+    const searchHeaderIndex = renderedRows.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
+    if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 1;
     renderedRows.slice(0, state.displayLimit).forEach(({ kind, item, letter }, index) => {
       if (kind === "letter") els.tableBody.append(makeLibraryLetterRow(letter));
       else els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
@@ -805,6 +841,7 @@
       }, { rootMargin: "500px 0px" });
       state.listObserver.observe(row);
     }
+    if (query && atViewRoot) scrollToSearchLetter();
   }
   function renderFolderPicker() {
     state.listObserver?.disconnect();
