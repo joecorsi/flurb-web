@@ -718,4 +718,11 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .home-button svg { width: 1.35rem; height: 1.35rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .home-button:hover:not(:disabled) { border-color: #1680ff; color: #fff; background: #202a37; }
 .home-button:disabled { opacity: .4; cursor: default; }
-.track-artwork { flex: 0 0 2.65rem; width: 2.65rem; height: 2.65rem; object-fit: cover; border-radius: 3px; background: #2b2d30; }
+.track-artwork { display: block; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; object-fit: cover; border-radius: 3px; background: linear-gradient(145deg, #303337, #202225); }
+.track-row { cursor: pointer; }
+.track-row:focus-visible { outline: 2px solid #1680ff; outline-offset: 1px; }
+.breadcrumbs { display: flex; min-width: 0; min-height: .9rem; align-items: center; gap: .3rem; overflow-x: auto; overflow-y: hidden; padding: 0 .1rem; color: #85878a; font: .66rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; scrollbar-width: none; }
+.breadcrumbs::-webkit-scrollbar { display: none; }
+.breadcrumb { flex: 0 0 auto; }
+.breadcrumb.current { color: #c5c6c8; }
+.breadcrumb-divider { flex: 0 0 auto; color: #5c5e61; }
