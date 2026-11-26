@@ -8,6 +8,8 @@
   }
   const els = {
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
+    librarySticky: $("#library-sticky"), playerArtworkButton: $("#player-artwork-button"), playerArtwork: $("#player-artwork"), playerArtworkShell: $("#player-artwork-shell"),
+    artworkViewer: $("#artwork-viewer"), artworkViewerClose: $("#artwork-viewer-close"), artworkViewerImage: $("#artwork-viewer-image"), artworkViewerCover: $("#artwork-viewer-cover"),
     settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), nowTitleViewport: $("#now-title-viewport"), emptyGlyph: $(".empty-glyph"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
     recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
@@ -44,6 +46,7 @@
     tracks: [],
     displayLimit: 100,
     current: null,
+    viewerTrack: null,
     loadingTrack: false,
     shuffle: false,
     repeat: "off",
@@ -536,6 +539,35 @@
     state.artworkQueue.push(track);
     pumpArtworkQueue();
   }
+  function updatePlayerArtwork(track) {
+    const link = track && state.artworkLinks.get(track.id);
+    if (link) els.playerArtwork.src = link;
+    else els.playerArtwork.removeAttribute("src");
+    els.playerArtworkShell.classList.toggle("has-artwork", Boolean(link));
+    els.playerArtworkButton.disabled = !track;
+  }
+  function updateViewerArtwork(track) {
+    const link = track && state.artworkLinks.get(track.id);
+    els.artworkViewerImage.alt = track ? `${track.name.replace(/\.[^.]+$/, "")} artwork` : "";
+    if (link) els.artworkViewerImage.src = link;
+    else els.artworkViewerImage.removeAttribute("src");
+    els.artworkViewerCover.classList.toggle("has-artwork", Boolean(link));
+  }
+  function openArtworkViewer(track) {
+    if (!track) return;
+    state.viewerTrack = track;
+    updateViewerArtwork(track);
+    els.artworkViewer.hidden = false;
+    const stickyBottom = els.librarySticky.getBoundingClientRect().bottom;
+    const playerTop = els.player.getBoundingClientRect().top;
+    els.artworkViewer.style.top = `${Math.max(0, stickyBottom)}px`;
+    els.artworkViewer.style.bottom = `${Math.max(0, window.innerHeight - playerTop)}px`;
+    if (hasId3ArtworkSupport(track)) queueTrackArtwork(track);
+  }
+  function closeArtworkViewer() {
+    els.artworkViewer.hidden = true;
+    state.viewerTrack = null;
+  }
   function pumpArtworkQueue() {
     while (state.activeArtworkDownloads < 2 && state.artworkQueue.length) {
       const track = state.artworkQueue.shift();
@@ -550,7 +582,11 @@
           image.classList.add("has-artwork");
           image.parentElement?.classList.add("has-artwork");
         });
-        if (state.current?.id === track.id) updateMediaMetadata(track);
+        if (state.current?.id === track.id) {
+          updateMediaMetadata(track);
+          updatePlayerArtwork(track);
+        }
+        if (state.viewerTrack?.id === track.id) updateViewerArtwork(track);
       }).catch(() => {}).finally(() => {
         state.artworkLoading.delete(track.id);
         state.activeArtworkDownloads -= 1;
@@ -863,23 +899,25 @@
     actions.append(favorite, overflow);
     row.append(artworkShell, copy, actions);
     row.addEventListener("click", (event) => {
-      if (!event.target.closest("button")) playTrack(track);
+      if (!event.target.closest("button")) playTrack(track, true);
     });
     row.addEventListener("keydown", (event) => {
       if ((event.key === "Enter" || event.key === " ") && event.target === row) {
         event.preventDefault();
-        playTrack(track);
+        playTrack(track, true);
       }
     });
     return row;
   }
-  async function playTrack(track) {
+  async function playTrack(track, showArtwork = false) {
     if (!state.token) return toast("Open Dropbox setup first");
     if (!isInsideLibrary(track)) return showNotice("That track is outside the selected Flurb folder.", "error");
     const requestId = ++state.playRequest;
     els.audio.pause();
     state.loadingTrack = true;
     state.current = track;
+    updatePlayerArtwork(track);
+    if (showArtwork) openArtworkViewer(track);
     els.nowTitle.textContent = track.name.replace(/\.[^.]+$/, "");
     updateTitleMarquee();
     setPlayerMetadata(track);
@@ -938,6 +976,7 @@
     const hasTrack = Boolean(state.current);
     els.play.disabled = !hasTrack || state.loadingTrack;
     els.nowPlayingLink.disabled = !hasTrack;
+    els.playerArtworkButton.disabled = !hasTrack;
     els.nowPlayingLink.setAttribute("aria-label", hasTrack ? `Open folder containing ${state.current.name.replace(/\.[^.]+$/, "")}` : "Nothing playing");
     els.previous.disabled = !hasTrack;
     els.next.disabled = !hasTrack;
@@ -1026,6 +1065,7 @@
     }
   }, true);
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.artworkViewer.hidden) { closeArtworkViewer(); return; }
     if (event.key === "Escape" && !els.settingsOverlay.hidden) { closeSettings(); return; }
     if (event.key === "Escape" && !els.viewMenu.hidden) {
       els.viewMenu.hidden = true;
@@ -1058,6 +1098,11 @@
   els.nowPlayingLink.addEventListener("click", (event) => {
     if (state.titleScrollGesture) { event.preventDefault(); state.titleScrollGesture = false; return; }
     if (state.current) showAlbumInLibrary(state.current);
+  });
+  els.playerArtworkButton.addEventListener("click", () => openArtworkViewer(state.current));
+  els.artworkViewerClose.addEventListener("click", closeArtworkViewer);
+  window.addEventListener("resize", () => {
+    if (!els.artworkViewer.hidden && state.viewerTrack) openArtworkViewer(state.viewerTrack);
   });
   window.addEventListener("resize", updateTitleMarquee);
   window.addEventListener("message", (event) => {
