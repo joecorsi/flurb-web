@@ -1003,15 +1003,18 @@
   els.playlistsOption.addEventListener("click", () => setViewMode("playlists"));
   els.libraryOption.addEventListener("click", () => setViewMode("library"));
   document.addEventListener("click", (event) => {
+    if (!els.viewMenu.hidden && !event.target.closest(".mode-picker")) {
+      els.viewMenu.hidden = true;
+      els.viewButton.setAttribute("aria-expanded", "false");
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     const openTrackMenus = [...document.querySelectorAll(".track-overflow-menu")].filter((menu) => !menu.hidden);
     if (openTrackMenus.length && !event.target.closest(".track-overflow")) {
       const tappedTrack = event.target.closest(".track-row");
       openTrackMenus.forEach((menu) => { menu.hidden = true; });
       if (tappedTrack) { event.preventDefault(); event.stopImmediatePropagation(); }
-    }
-    if (!event.target.closest(".mode-picker")) {
-      els.viewMenu.hidden = true;
-      els.viewButton.setAttribute("aria-expanded", "false");
     }
   }, true);
   document.addEventListener("keydown", (event) => {
