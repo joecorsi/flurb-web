@@ -20,7 +20,7 @@
     tokenExpiresAt: Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0),
     refreshPromise: null,
     libraryFolder: null,
-    viewMode: ["recent", "favorites", "playlists", "library"].includes(localStorage.getItem("flurb.dropbox.viewMode")) ? localStorage.getItem("flurb.dropbox.viewMode") : "recent",
+    viewMode: ["recent", "favorites", "playlists", "library"].includes(localStorage.getItem("flurb.dropbox.actionView")) ? localStorage.getItem("flurb.dropbox.actionView") : "recent",
     activePlaylistId: null,
     playlists: [],
     folderPicker: false,
@@ -300,7 +300,7 @@
     state.viewMode = view;
     state.activePlaylistId = null;
     state.folderHistory = [];
-    localStorage.setItem("flurb.dropbox.viewMode", view);
+    localStorage.setItem("flurb.dropbox.actionView", view);
     els.viewMenu.hidden = true;
     els.viewButton.setAttribute("aria-expanded", "false");
     state.displayLimit = 100;
@@ -708,7 +708,7 @@
     if (!parent || !(parent === root || parent.startsWith(`${root}/`))) return;
     const name = parent === root ? state.libraryFolder.name : parent.split("/").pop();
     state.viewMode = "library"; state.activePlaylistId = null; state.folderHistory = [];
-    localStorage.setItem("flurb.dropbox.viewMode", "library"); updateQuickActions(); renderBreadcrumbs();
+    localStorage.setItem("flurb.dropbox.actionView", "library"); updateQuickActions(); renderBreadcrumbs();
     loadLibraryFolder(parent, name).catch((error) => showNotice(friendlyError(error), "error"));
   }
   function makeFolderRow(folder, index = 0) {
