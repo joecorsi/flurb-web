@@ -699,7 +699,7 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .player { padding-inline: var(--page-gutter); }
 
 /* Keep search compact and pair it with a square shortcut to the library root. */
-:root { --search-row-height: 3.6rem; }
+:root { --search-row-height: 50px; }
 .search-row { height: var(--search-row-height); min-height: var(--search-row-height); gap: .45rem; }
 .search-box { height: var(--search-row-height); min-height: var(--search-row-height); }
 .home-button {
@@ -892,3 +892,20 @@ body.is-embedded .settings-back { display: none; }
   background: transparent !important;
 }
 .track-row.is-playing .track-name { color: #e6e9df; }
+
+
+/* Compact, view-rooted breadcrumb chips and 50px controls. */
+:root { --search-row-height: 50px; }
+.breadcrumbs { height: 20px; min-height: 20px; overflow: hidden; }
+.breadcrumbs-path { display: flex; width: max-content; min-width: 100%; height: 20px; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; }
+.breadcrumb { display: inline-flex; flex: 0 0 auto; height: 20px; align-items: center; justify-content: center; padding: 0 6px; border: 0; border-radius: 2px; color: #111; background: rgba(255,255,255,var(--breadcrumb-opacity, 1)); font: 500 .62rem/20px var(--mono); white-space: nowrap; }
+.breadcrumb.current { color: #111; }
+.breadcrumb-root { flex: 0 0 50px; width: 50px; max-width: 50px; padding: 0; color: #111; background: #fff; }
+.now-title-viewport { position: relative; display: block; width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; }
+.now-title-viewport #now-title { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-title-viewport.is-overflowing #now-title { width: max-content; max-width: none; overflow: visible; text-overflow: clip; animation: flurb-title-scroll 14s ease-in-out 1.2s infinite alternate; }
+.now-title-viewport.is-overflowing::after { position: absolute; top: 0; right: 0; color: currentColor; content: "…"; background: linear-gradient(90deg, transparent, #202124 40%); animation: flurb-title-ellipsis .25s ease 1.1s forwards; }
+@keyframes flurb-title-scroll { from { transform: translateX(0); } to { transform: translateX(var(--title-overflow)); } }
+@keyframes flurb-title-ellipsis { to { opacity: 0; } }
+
+.breadcrumb.current { color: #111; }
