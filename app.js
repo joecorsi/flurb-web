@@ -90,7 +90,7 @@
     state.token = "";
     state.refreshToken = "";
     state.tokenExpiresAt = 0;
-    ["flurb.dropbox.accessToken", "flurb.dropbox.refreshToken", "flurb.dropbox.tokenExpiresAt"].forEach((key) => {
+    ["flurb.dropbox.accessToken", "flurb.dropbox.refreshToken", "flurb.dropbox.tokenExpiresAt", "flurb.dropbox.loginAt"].forEach((key) => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
@@ -291,6 +291,7 @@
         localStorage.setItem("flurb.dropbox.refreshToken", state.refreshToken);
       }
       state.tokenExpiresAt = Date.now() + (Number(result.expires_in) || 14_400) * 1000;
+      localStorage.setItem("flurb.dropbox.loginAt", String(Date.now()));
       localStorage.setItem("flurb.dropbox.accessToken", state.token);
       localStorage.setItem("flurb.dropbox.tokenExpiresAt", String(state.tokenExpiresAt));
       sessionStorage.setItem("flurb.dropbox.accessToken", state.token);
@@ -369,11 +370,12 @@
     const addCrumb = (name, current, onClick, depth = 0, isRoot = false) => {
       const crumb = document.createElement("button");
       crumb.type = "button";
-      crumb.className = `breadcrumb${isRoot ? " breadcrumb-root" : ""}${current ? " current" : ""}`;
-      if (isRoot && state.viewMode === "favorites") {
-        crumb.innerHTML = '<i data-lucide="heart" aria-hidden="true"></i>';
-        crumb.setAttribute("aria-label", "Favorites");
-        crumb.title = "Favorites";
+      const rootIcon = ({ recent: "clock-3", favorites: "heart", playlists: "list-music", library: "library" })[state.viewMode];
+      crumb.className = `breadcrumb${isRoot ? " breadcrumb-root" : ""}${isRoot && state.viewMode === "favorites" ? " favorites-root" : ""}${current ? " current" : ""}`;
+      if (isRoot) {
+        crumb.innerHTML = `<i data-lucide="${rootIcon}" aria-hidden="true"></i>`;
+        crumb.setAttribute("aria-label", name);
+        crumb.title = name;
       } else {
         crumb.textContent = name;
       }
@@ -387,7 +389,7 @@
         onClick();
       });
       scroller.append(crumb);
-      if (isRoot && state.viewMode === "favorites") renderLucideIcons(crumb);
+      if (isRoot) renderLucideIcons(crumb);
     };
     if (state.viewMode === "playlists") {
       const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
@@ -722,6 +724,21 @@
     if (state.viewMode === "playlists") return state.playlists.find((playlist) => playlist.id === state.activePlaylistId)?.tracks || [];
     return state.tracks;
   }
+  function libraryLetter(name) {
+    const first = String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").charAt(0).toUpperCase();
+    return /^[A-Z]$/.test(first) ? first : "Unknown";
+  }
+  function makeLibraryLetterRow(letter) {
+    const row = document.createElement("div");
+    row.className = `library-row library-letter-row${letter === "Unknown" ? " is-unknown" : ""}`;
+    row.setAttribute("role", "separator");
+    row.setAttribute("aria-label", letter);
+    const marker = document.createElement("span");
+    marker.className = "library-letter-marker";
+    marker.textContent = letter;
+    row.append(marker);
+    return row;
+  }
   function renderTracks() {
     setLibraryLoading(false);
     state.listObserver?.disconnect();
@@ -755,11 +772,27 @@
       els.emptyState.querySelector("span").textContent = "";
       return;
     }
-    rows.slice(0, state.displayLimit).forEach(({ kind, item }, index) => {
-      els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
+    let renderedRows = rows;
+    if (state.viewMode === "library") {
+      const groups = new Map();
+      rows.forEach((row) => {
+        const letter = libraryLetter(row.item.name);
+        if (!groups.has(letter)) groups.set(letter, []);
+        groups.get(letter).push(row);
+      });
+      const letters = [...groups.keys()].sort((a, b) => a === "Unknown" ? 1 : b === "Unknown" ? -1 : a.localeCompare(b));
+      renderedRows = [];
+      letters.forEach((letter) => {
+        renderedRows.push({ kind: "letter", letter });
+        renderedRows.push(...groups.get(letter));
+      });
+    }
+    renderedRows.slice(0, state.displayLimit).forEach(({ kind, item, letter }, index) => {
+      if (kind === "letter") els.tableBody.append(makeLibraryLetterRow(letter));
+      else els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
     });
     renderLucideIcons(els.tableBody);
-    const remaining = rows.length - state.displayLimit;
+    const remaining = renderedRows.length - state.displayLimit;
     if (remaining > 0) {
       const row = document.createElement("div");
       row.className = "list-sentinel";
