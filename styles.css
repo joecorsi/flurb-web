@@ -737,6 +737,7 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .search-box .search-icon { flex: 0 0 1rem; }
 .search-box input { flex: 1 1 auto; min-width: 0; font-size: 16px; }
 .search-box input::-webkit-search-cancel-button { display: none; }
+.clear-search i, .clear-search svg { width: 1.35rem; height: 1.35rem; }
 .clear-search { display: grid; flex: 0 0 2rem; width: 2rem; height: 2rem; place-items: center; padding: 0; border: 0; color: #d5d6d8; background: transparent; font: 400 1.8rem/1 var(--sans); cursor: pointer; }
 .clear-search:disabled { opacity: .32; }
 .mode-picker { position: relative; width: calc(100% - var(--search-row-height) - var(--search-row-height) - var(--top-control-gap) - var(--top-control-gap)); margin-left: calc(var(--search-row-height) + var(--search-row-height) + var(--top-control-gap) + var(--top-control-gap)); }
@@ -805,3 +806,23 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .playlist-submenu { max-height: 13rem; overflow-y: auto; border-block: 1px solid #343638; background: #151617; }
 .playlist-submenu[hidden] { display: none !important; }
 .playlist-submenu button { padding-left: 1.35rem; color: #bfc0c1; font-size: .73rem; }
+
+
+/* Exact 10px top rhythm from the viewport edge through each control. */
+:root { --page-gutter: 10px; --top-control-gap: 10px; }
+.app-shell > main { padding-inline: 0; }
+.library-sticky { margin-inline: 10px; padding: 10px 0; gap: 10px; border-bottom: 1px solid var(--line); }
+.search-row, .action-row { gap: 10px; }
+.search-box { gap: 10px; padding-inline: 10px; }
+.mode-select { gap: 10px; padding-inline: 10px; }
+.breadcrumbs { width: 100%; margin: 0; padding: 0; }
+.notice { margin-inline: 10px; }
+@media (min-width: 700px) {
+  .library-sticky { padding: 10px 0; }
+  .track-list { padding-inline: 0; }
+}
+
+.clear-search svg { width: 1.35rem; height: 1.35rem; }
+.notice-mark { width: 1rem; height: 1rem; }
+.empty-glyph svg { width: 1.25rem; height: 1.25rem; }
+.folder-icon { width: 1.05rem; height: 1.05rem; }
