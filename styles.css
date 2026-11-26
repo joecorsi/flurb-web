@@ -826,3 +826,17 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .notice-mark { width: 1rem; height: 1rem; }
 .empty-glyph svg { width: 1.25rem; height: 1.25rem; }
 .folder-icon { width: 1.05rem; height: 1.05rem; }
+
+
+/* Opaque full-width sticky backing; the controls keep a 10px viewport inset. */
+.library-sticky { margin: 0; padding: 10px; background: #111213; backdrop-filter: none; }
+.breadcrumbs { display: flex; min-width: 0; overflow: hidden; gap: 10px; }
+.breadcrumb-root { flex: 0 1 42%; min-width: 0; max-width: 42%; overflow: hidden; padding: 0; border: 0; color: #c5c6c8; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; font: inherit; cursor: pointer; }
+.breadcrumbs-path { display: flex; flex: 1 1 0; min-width: 0; align-items: center; gap: 10px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; }
+.breadcrumbs-path::-webkit-scrollbar { display: none; }
+.breadcrumb { flex: 0 0 auto; padding: 0; border: 0; color: #999b9e; background: transparent; font: inherit; cursor: pointer; }
+.breadcrumb.current { color: #d4d5d6; }
+.breadcrumb-divider { flex: 0 0 auto; color: #5c5e61; }
+.library-row, .artist-row, .track-row { height: var(--search-row-height); min-height: var(--search-row-height); }
+.track-row { padding-block: .3rem; }
+@media (min-width: 700px) { .library-sticky { padding: 10px; } }
