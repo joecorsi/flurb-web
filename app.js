@@ -8,6 +8,7 @@
   }
   const els = {
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
+    settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), emptyGlyph: $("#empty-icon"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
     recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
     playlistsOption: $('[data-view="playlists"]'), playlistsCount: $("#playlists-count"), libraryOption: $('[data-view="library"]'),
@@ -319,6 +320,7 @@
       if (state.libraryFolder?.id && state.libraryFolder?.path_lower) await loadLibraryFolder();
       else await openFolderPicker();
     } catch (error) {
+      setLibraryLoading(false);
       showNotice(friendlyError(error), "error");
     }
   }
@@ -340,42 +342,60 @@
   const hasId3ArtworkSupport = (track) => track.name.toLowerCase().endsWith(".mp3");
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
-    const rootButton = document.createElement("button");
-    rootButton.type = "button";
-    rootButton.className = "breadcrumb-root";
-    rootButton.addEventListener("click", goHomeLibrary);
-    const path = document.createElement("span");
-    path.className = "breadcrumbs-path";
-
-    if (state.viewMode === "playlists") {
-      rootButton.textContent = "Playlists";
-      els.breadcrumbs.append(rootButton, path);
-      const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
-      if (playlist) {
-        const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; path.append(divider);
-        const crumb = document.createElement("button"); crumb.type = "button"; crumb.className = "breadcrumb current"; crumb.textContent = playlist.name; crumb.setAttribute("aria-current", "page");
-        crumb.addEventListener("click", goHomeLibrary); path.append(crumb);
+    const scroller = document.createElement("span");
+    scroller.className = "breadcrumbs-path";
+    els.breadcrumbs.append(scroller);
+    const addCrumb = (name, current, onClick) => {
+      if (scroller.childElementCount) {
+        const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; divider.setAttribute("aria-hidden", "true"); scroller.append(divider);
       }
+      const crumb = document.createElement("button"); crumb.type = "button"; crumb.className = `breadcrumb${current ? " current" : ""}`; crumb.textContent = name;
+      if (current) crumb.setAttribute("aria-current", "page");
+      crumb.addEventListener("click", onClick);
+      scroller.append(crumb);
+    };
+    if (state.viewMode === "playlists") {
+      const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
+      addCrumb("Playlists", !playlist, goHomeLibrary);
+      if (playlist) addCrumb(playlist.name, true, goHomeLibrary);
       return;
     }
-
     const root = state.libraryFolder?.path_lower;
-    if (!root || state.folderPicker) return;
-    rootButton.textContent = state.libraryFolder.name;
-    els.breadcrumbs.append(rootButton, path);
-    const folders = [...state.folderHistory, ...(state.folderPath && state.folderPath !== root ? [{ path: state.folderPath, name: state.folderName }] : [])]
-      .filter((item, index, all) => item.path?.startsWith(`${root}/`) && all.findIndex((entry) => entry.path === item.path) === index);
-    folders.forEach((item, index) => {
-      const divider = document.createElement("span"); divider.className = "breadcrumb-divider"; divider.textContent = "/"; divider.setAttribute("aria-hidden", "true"); path.append(divider);
-      const crumb = document.createElement("button"); crumb.type = "button"; crumb.className = `breadcrumb${index === folders.length - 1 ? " current" : ""}`; crumb.textContent = item.name;
-      if (index === folders.length - 1) crumb.setAttribute("aria-current", "page");
-      crumb.addEventListener("click", () => {
-        state.folderHistory = folders.slice(0, index).map(({ path: folderPath, name }) => ({ path: folderPath, name }));
-        loadLibraryFolder(item.path, item.name).catch((error) => showNotice(friendlyError(error), "error"));
-      });
-      path.append(crumb);
-    });
-    path.scrollLeft = path.scrollWidth;
+    if (!root || state.folderPicker) { els.breadcrumbs.replaceChildren(); return; }
+    const rootCrumb = { path: root, name: state.libraryFolder.name };
+    const folders = [rootCrumb, ...state.folderHistory, ...(state.folderPath && state.folderPath !== root ? [{ path: state.folderPath, name: state.folderName }] : [])]
+      .filter((item, index, all) => item.path && (index === 0 || item.path.startsWith(`${root}/`)) && all.findIndex((entry) => entry.path === item.path) === index);
+    folders.forEach((item, index) => addCrumb(item.name, index === folders.length - 1, index === 0 ? goHomeLibrary : () => {
+      state.folderHistory = folders.slice(1, index).map(({ path: folderPath, name }) => ({ path: folderPath, name }));
+      loadLibraryFolder(item.path, item.name).catch((error) => showNotice(friendlyError(error), "error"));
+    }));
+    scroller.scrollLeft = scroller.scrollWidth;
+  }
+  function setLibraryLoading(loading) {
+    const wasLoading = els.emptyState.classList.contains("is-loading");
+    if (loading) {
+      els.emptyState.classList.add("is-loading");
+      els.emptyState.hidden = false;
+      els.emptyState.querySelector("p").textContent = "Loading library…";
+      const host = els.emptyGlyph.parentElement;
+      host.innerHTML = '<i id="empty-icon" data-lucide="loader-circle" class="library-loading-icon" aria-hidden="true"></i>';
+      renderLucideIcons(host); els.emptyGlyph = $("#empty-icon");
+      els.emptyGlyph.classList.add("library-loading-icon");
+    } else if (wasLoading) {
+      els.emptyState.classList.remove("is-loading");
+      const host = els.emptyGlyph.parentElement;
+      host.innerHTML = '<i id="empty-icon" data-lucide="disc-3" aria-hidden="true"></i>';
+      els.emptyState.querySelector("p").textContent = "No tracks";
+      renderLucideIcons(host); els.emptyGlyph = $("#empty-icon");
+    }
+  }
+  function openSettings() {
+    els.settingsOverlay.hidden = false;
+    els.settingsClose.focus();
+  }
+  function closeSettings() {
+    els.settingsOverlay.hidden = true;
+    els.settingsButton.focus();
   }
   function id3FrameSize(bytes, offset, version) {
     if (version === 4) return ((bytes[offset] & 0x7f) << 21) | ((bytes[offset + 1] & 0x7f) << 14) | ((bytes[offset + 2] & 0x7f) << 7) | (bytes[offset + 3] & 0x7f);
@@ -621,6 +641,7 @@
     return state.tracks;
   }
   function renderTracks() {
+    setLibraryLoading(false);
     state.listObserver?.disconnect();
     state.artworkObserver?.disconnect();
     state.artworkElements.clear();
@@ -861,6 +882,8 @@
   function updateTransport() {
     const hasTrack = Boolean(state.current);
     els.play.disabled = !hasTrack || state.loadingTrack;
+    els.nowPlayingLink.disabled = !hasTrack;
+    els.nowPlayingLink.setAttribute("aria-label", hasTrack ? `Open folder containing ${state.current.name.replace(/\.[^.]+$/, "")}` : "Nothing playing");
     els.previous.disabled = !hasTrack;
     els.next.disabled = !hasTrack;
     els.progress.disabled = !hasTrack || !Number.isFinite(els.audio.duration);
@@ -933,15 +956,19 @@
   els.playlistsOption.addEventListener("click", () => setViewMode("playlists"));
   els.libraryOption.addEventListener("click", () => setViewMode("library"));
   document.addEventListener("click", (event) => {
-    if (!event.target.closest(".track-overflow")) {
-      document.querySelectorAll(".track-overflow-menu").forEach((menu) => { menu.hidden = true; });
+    const openTrackMenus = [...document.querySelectorAll(".track-overflow-menu")].filter((menu) => !menu.hidden);
+    if (openTrackMenus.length && !event.target.closest(".track-overflow")) {
+      const tappedTrack = event.target.closest(".track-row");
+      openTrackMenus.forEach((menu) => { menu.hidden = true; });
+      if (tappedTrack) { event.preventDefault(); event.stopImmediatePropagation(); }
     }
     if (!event.target.closest(".mode-picker")) {
       els.viewMenu.hidden = true;
       els.viewButton.setAttribute("aria-expanded", "false");
     }
-  });
+  }, true);
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.settingsOverlay.hidden) { closeSettings(); return; }
     if (event.key === "Escape" && !els.viewMenu.hidden) {
       els.viewMenu.hidden = true;
       els.viewButton.setAttribute("aria-expanded", "false");
@@ -949,6 +976,17 @@
     }
   });
   els.home.addEventListener("click", goHomeLibrary);
+  els.settingsButton.addEventListener("click", openSettings);
+  els.settingsClose.addEventListener("click", closeSettings);
+  els.settingsOverlay.querySelector("[data-close-settings]").addEventListener("click", closeSettings);
+  els.settingsOverlay.addEventListener("click", (event) => { if (event.target === els.settingsOverlay) closeSettings(); });
+  els.nowPlayingLink.addEventListener("click", () => { if (state.current) showAlbumInLibrary(state.current); });
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin || event.data?.type !== "flurb-library-selected") return;
+    try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) { state.libraryFolder = null; }
+    state.folderHistory = []; state.folderCache.clear(); closeSettings(); updateConnection();
+    if (state.libraryFolder?.path_lower) loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name).catch((error) => showNotice(friendlyError(error), "error"));
+  });
   els.play.addEventListener("click", () => {
     if (!state.current) return;
     if (els.audio.paused) els.audio.play().catch((e) => showNotice(friendlyError(e), "error"));
@@ -995,18 +1033,17 @@
     const actions = {
       play: () => els.audio.play().catch((error) => showNotice(friendlyError(error), "error")),
       pause: () => els.audio.pause(),
-      previoustrack: () => { if (els.audio.currentTime > 3) els.audio.currentTime = 0; else playNext(-1); },
+      previoustrack: () => playNext(-1),
       nexttrack: () => playNext(1),
-      seekto: (details) => { if (Number.isFinite(details.seekTime)) els.audio.currentTime = details.seekTime; },
-      seekbackward: (details) => { els.audio.currentTime = Math.max(0, els.audio.currentTime - (details.seekOffset || 10)); },
-      seekforward: (details) => { if (Number.isFinite(els.audio.duration)) els.audio.currentTime = Math.min(els.audio.duration, els.audio.currentTime + (details.seekOffset || 10)); }
+      seekto: (details) => { if (Number.isFinite(details.seekTime)) els.audio.currentTime = details.seekTime; }
     };
     Object.entries(actions).forEach(([action, handler]) => { try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {} });
   }
 
   installHistoryNavigation();
+  if (state.token && state.libraryFolder?.path_lower) setLibraryLoading(true);
   renderLucideIcons();
   updateConnection();
   updateTransport();
-  handleOAuthReturn().then((handled) => { if (!handled && state.token) connectLibrary(); });
+  handleOAuthReturn().then((handled) => { if (!handled && state.token) connectLibrary().catch(() => setLibraryLoading(false)); });
 })();
