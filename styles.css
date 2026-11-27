@@ -1334,9 +1334,18 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 
 
 /* Keep notices and transport buttons clear of the player and tap highlights. */
+.notice.error {
+  position: fixed;
+  z-index: 80;
+  top: auto;
+  right: 10px;
+  bottom: calc(var(--player-height, 150px) + 10px);
+  left: 10px;
+  max-width: 880px;
+  margin: 0 auto;
+}
 @media (max-width: 699px) {
   .notice.error {
-    top: auto !important;
     bottom: calc(var(--visual-viewport-bottom, 0px) + var(--player-height, 150px) + 10px);
   }
   body.is-keyboard-open .notice.error {
