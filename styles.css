@@ -1255,6 +1255,17 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .favorite-button:active:not(:disabled),
 .track-favorite:active:not(:disabled) { color: #a54fff !important; }
 
+/* Pin the controls to the viewport; document scrolling only moves the list. */
+:root { --library-sticky-height: 149px; }
+.library { padding-top: var(--library-sticky-height) !important; }
+.library-sticky {
+  position: fixed !important;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 60;
+}
+
 
 /* Shuffle and repeat only change their glyph color while pressed. */
 #shuffle-button,
