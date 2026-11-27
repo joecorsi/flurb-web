@@ -263,6 +263,31 @@
   const tursoConnect = document.querySelector("#turso-connect");
   const tursoDisconnect = document.querySelector("#turso-disconnect");
   const tursoStatus = document.querySelector("#turso-status");
+  const tursoSyncDetails = document.querySelector("#turso-sync-details");
+  const tursoSyncPhase = document.querySelector("#turso-sync-phase");
+  const tursoLastSync = document.querySelector("#turso-last-sync");
+  const tursoQueuedEdits = document.querySelector("#turso-queued-edits");
+  const tursoPhaseLabels = {
+    connecting: "Connecting…", syncing: "Syncing…", synced: "Up to date",
+    offline: "Offline", paused: "Paused", pending: "Waiting to sync", connected: "Connected"
+  };
+  let tursoDetailsRequest = 0;
+  function renderTursoDetails({ phase, lastSyncAt, queued }) {
+    tursoSyncPhase.textContent = tursoPhaseLabels[phase] || "Connected";
+    tursoLastSync.textContent = Number.isFinite(lastSyncAt) ? formatLoginDate(lastSyncAt) : "Not yet";
+    tursoQueuedEdits.textContent = Number.isInteger(queued) ? String(queued) : "—";
+  }
+  async function loadTursoDetails(config) {
+    const request = ++tursoDetailsRequest;
+    tursoSyncDetails.hidden = !config;
+    if (!config) return;
+    const phase = navigator.onLine ? "connected" : "offline";
+    renderTursoDetails({ phase });
+    try {
+      const [snapshot, lastSyncAt] = await Promise.all([cloud.load(config), cloud.lastSyncAt(config)]);
+      if (request === tursoDetailsRequest) renderTursoDetails({ phase, lastSyncAt, queued: snapshot.pending.length });
+    } catch (_) {}
+  }
   const setTursoStatus = (text, error = false) => {
     tursoStatus.textContent = text;
     tursoStatus.classList.toggle("is-error", error);
@@ -276,6 +301,7 @@
     tursoDisconnect.hidden = !config;
     tursoConnect.textContent = config ? "Reconnect Turso" : "Connect Turso";
     tursoConnect.classList.toggle("is-connected", Boolean(config));
+    loadTursoDetails(config);
   }
   tursoForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -285,7 +311,7 @@
       await cloud.connect(tursoUrl.value, tursoToken.value);
       tursoToken.value = "";
       updateTursoForm();
-      setTursoStatus("Connected to Turso.");
+      setTursoStatus("");
       notifyPlayer("flurb-turso-changed");
     } catch (error) {
       setTursoStatus(error.message || "Could not connect to Turso.", true);
@@ -308,15 +334,22 @@
     }
   });
   window.addEventListener("message", (event) => {
-    if (event.origin !== location.origin || event.source !== window.parent ||
-        event.data?.type !== "flurb-turso-status" || !cloud.readConfig() || !event.data.message) return;
-    setTursoStatus(event.data.message, event.data.message.startsWith("Turso sync paused"));
+    if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== "flurb-turso-status") return;
+    const config = cloud.readConfig();
+    if (!config || event.data.config?.id !== config.id || event.data.config?.origin !== config.origin) return;
+    tursoDetailsRequest += 1;
+    tursoSyncDetails.hidden = false;
+    renderTursoDetails(event.data);
+    if (!tursoConnect.disabled) setTursoStatus(event.data.message, event.data.phase === "paused");
   });
   updateTursoForm();
-  if (cloud.readConfig()) {
-    setTursoStatus("Connected to Turso.");
-    notifyPlayer("flurb-turso-status-request");
-  }
+  if (cloud.readConfig()) notifyPlayer("flurb-turso-status-request");
+  window.addEventListener("storage", (event) => {
+    if (event.key === "flurb.turso.connection" && !tursoConnect.disabled) {
+      updateTursoForm();
+      notifyPlayer("flurb-turso-status-request");
+    }
+  });
 
   readDropboxSession();
   updateDropboxPanel();

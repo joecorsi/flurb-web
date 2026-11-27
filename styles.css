@@ -1569,3 +1569,5 @@ html { -webkit-tap-highlight-color: transparent; }
   cursor: pointer;
 }
 .new-playlist-actions button[type="submit"] { color: #fff; background: var(--lime); }
+
+.turso-sync-details { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }

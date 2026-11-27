@@ -46,6 +46,8 @@
     cloud: null,
     cloudSnapshot: null,
     cloudStatus: "",
+    cloudPhase: "",
+    cloudLastSyncAt: null,
     catalog: new Map(),
     catalogFolders: new Map(),
     folderPath: CATALOG_ROOT,
@@ -1005,7 +1007,20 @@
   }
 
   function sendCloudStatus() {
-    $("#settings-frame").contentWindow?.postMessage({ type: "flurb-turso-status", message: state.cloudStatus }, location.origin);
+    $("#settings-frame").contentWindow?.postMessage({
+      type: "flurb-turso-status",
+      config: state.cloud,
+      phase: state.cloudPhase,
+      message: state.cloudStatus,
+      lastSyncAt: state.cloudLastSyncAt,
+      queued: state.cloudSnapshot?.pending.length ?? null
+    }, location.origin);
+  }
+
+  function setCloudStatus(phase, message = "") {
+    state.cloudPhase = phase;
+    state.cloudStatus = message;
+    sendCloudStatus();
   }
 
   function setCloudSpinner(syncing) {
@@ -1026,25 +1041,24 @@
         const config = state.cloud;
         try {
           applyCloudSnapshot(await FlurbCloud.load(config), config);
+          if (config !== state.cloud) continue;
           if (!navigator.onLine) {
-            state.cloudStatus = "Offline. Edits are saved on this device.";
-            sendCloudStatus();
+            setCloudStatus("offline");
             continue;
           }
           setCloudSpinner(true);
-          await FlurbCloud.sync(config, (snapshot) => applyCloudSnapshot(snapshot, config));
+          setCloudStatus("syncing");
+          const syncedAt = await FlurbCloud.sync(config, (snapshot) => applyCloudSnapshot(snapshot, config));
           if (config === state.cloud) {
-            const pending = state.cloudSnapshot?.pending.length || 0;
-            state.cloudStatus = pending ? `${pending} local changes waiting to sync.` : "Synced with Turso.";
-            sendCloudStatus();
+            if (syncedAt) state.cloudLastSyncAt = syncedAt;
+            setCloudStatus(state.cloudSnapshot?.pending.length ? "pending" : "synced");
           }
         } catch (error) {
           if (config !== state.cloud) continue;
-          state.cloudStatus = navigator.onLine
-            ? `Turso sync paused. ${error.message || "Could not reach Turso."}`
-            : "Offline. Edits are saved on this device.";
-          sendCloudStatus();
-          if (!state.cloudSnapshot?.cursor && !state.catalog.size && navigator.onLine) showNotice(state.cloudStatus, "error");
+          if (navigator.onLine) {
+            setCloudStatus("paused", error.message || "Could not reach Turso.");
+            if (!state.cloudSnapshot?.cursor && !state.catalog.size) showNotice(`Turso sync paused. ${state.cloudStatus}`, "error");
+          } else setCloudStatus("offline");
         }
       }
     } finally {
@@ -1062,7 +1076,9 @@
     state.cloud = config;
     state.cloudSnapshot = null;
     state.recentAlbumCache = null;
-    state.cloudStatus = config ? "Connecting to Turso…" : "";
+    state.cloudStatus = "";
+    state.cloudPhase = config ? "connecting" : "";
+    state.cloudLastSyncAt = null;
     state.folderPath = CATALOG_ROOT;
     state.folderHistory = [];
     state.activePlaylistId = null;
@@ -1078,7 +1094,11 @@
     sendCloudStatus();
     if (!config) return;
     try {
-      applyCloudSnapshot(await FlurbCloud.load(config), config);
+      const [snapshot, lastSyncAt] = await Promise.all([FlurbCloud.load(config), FlurbCloud.lastSyncAt(config)]);
+      if (config !== state.cloud) return;
+      state.cloudLastSyncAt = Math.max(state.cloudLastSyncAt || 0, lastSyncAt || 0) || null;
+      applyCloudSnapshot(snapshot, config);
+      sendCloudStatus();
     } catch (error) {
       showNotice(error.message || "Could not open the Turso cache.", "error");
     }
@@ -1093,6 +1113,7 @@
     }
     try {
       applyCloudSnapshot(await FlurbCloud.edit(config, buildEvents), config);
+      sendCloudStatus();
       syncCloud();
       return config === state.cloud;
     } catch (error) {

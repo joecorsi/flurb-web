@@ -98,6 +98,7 @@
 
   const cacheKey = (config) => `library:${JSON.stringify([config.origin, config.id])}`;
   const tokenKey = (config) => `token:${cacheKey(config)}`;
+  const lastSyncKey = (config) => `last-sync:${cacheKey(config)}`;
   const emptyCache = () => ({ cursor: 0, tracks: new Map(), playlists: new Map(), members: new Map(), modified: new Map(), pending: [], generation: 0 });
   function activeConfig(config) {
     const active = readConfig();
@@ -243,10 +244,14 @@
     });
     if (activeConfig(config)) onUpdate(next);
   }
+  async function lastSyncAt(config) {
+    return await record(lastSyncKey(config)) || null;
+  }
   async function sync(config, onUpdate) {
     const run = async () => {
       const token = await record(tokenKey(config));
-      if (!token || !activeConfig(config)) return;
+      if (!activeConfig(config)) return;
+      if (!token) throw new Error("Reconnect Turso in Settings.");
       const id = await identity(config.origin, token);
       if (id !== config.id) throw new Error("The Turso library changed. Reconnect in Settings.");
       await pullRecentCutoff(config, token, onUpdate);
@@ -271,8 +276,12 @@
         }
         if (!activeConfig(config)) return;
         if (!batch.length) {
-          onUpdate(await load(config));
-          return;
+          const snapshot = await load(config);
+          if (!activeConfig(config)) return;
+          onUpdate(snapshot);
+          if (snapshot.pending.length) return;
+          const syncedAt = Date.now();
+          return record(lastSyncKey(config), (previous) => Math.max(previous || 0, syncedAt));
         }
         const next = await record(cacheKey(config), (saved) => applyPage(saved || emptyCache(), batch));
         if (activeConfig(config)) onUpdate(next);
@@ -282,5 +291,5 @@
     return run();
   }
 
-  window.FlurbCloud = { readConfig, connect, disconnect, load, edit, sync, safePath, applyPage, emptyCache };
+  window.FlurbCloud = { readConfig, connect, disconnect, load, edit, sync, lastSyncAt, safePath, applyPage, emptyCache };
 })();
