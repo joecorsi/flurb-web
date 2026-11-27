@@ -1075,17 +1075,17 @@
     els.nowFavorite.classList.toggle("active", active);
     els.nowFavorite.setAttribute("aria-label", active ? "Remove current track from favorites" : "Favorite current track");
   }
+  let keyboardBaselineHeight = window.visualViewport?.height || window.innerHeight;
   function syncSearchState(forceKeyboardClosed = false) {
     const searchFocused = document.activeElement === els.search;
     document.body.classList.toggle("is-searching", Boolean(els.search.value.trim()));
     const viewport = window.visualViewport;
     const mobile = window.matchMedia("(max-width: 699px)").matches;
-    const screenHeight = window.screen?.height || 0;
-    const keyboardThreshold = Math.max(220, screenHeight * 0.28);
-    const keyboardOpen = Boolean(!forceKeyboardClosed && mobile && searchFocused && viewport && (
-      window.innerHeight - viewport.height > 120 ||
-      (screenHeight && screenHeight - viewport.height > keyboardThreshold)
-    ));
+    if (viewport && (!searchFocused || forceKeyboardClosed)) keyboardBaselineHeight = viewport.height;
+    const baseline = Math.max(keyboardBaselineHeight, viewport?.height || 0);
+    const keyboardOpen = Boolean(!forceKeyboardClosed && mobile && searchFocused && viewport &&
+      baseline - viewport.height > Math.max(120, baseline * 0.2));
+    if (viewport && searchFocused && !keyboardOpen) keyboardBaselineHeight = viewport.height;
     document.body.classList.toggle("is-keyboard-open", keyboardOpen);
   }
   function syncMobileViewport() {
