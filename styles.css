@@ -1048,10 +1048,9 @@ html, body { touch-action: pan-x pan-y; }
 .scrubber-row { grid-area: seek; }
 .transport { grid-area: transport; }
 
-/* Searching on a phone gives the list the full viewport above the keyboard. */
+/* Hide playback controls only while the mobile keyboard is actually visible. */
 @media (max-width: 699px) {
-  body.is-searching .player { display: none !important; }
-  body.is-searching .app-shell { padding-bottom: 10px !important; }
+  body.is-keyboard-open .player { display: none !important; }
 }
 
 /* Prevent iOS touch focus from leaving a blue ring on the Settings control. */
@@ -1256,29 +1255,6 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .favorite-button:active:not(:disabled),
 .track-favorite:active:not(:disabled) { color: #a54fff !important; }
 
-/* Search results scroll within the list while the controls stay in place. */
-@media (max-width: 699px) {
-  body.is-searching .library {
-    display: flex;
-    height: 100dvh;
-    min-height: 0;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  body.is-searching .library-sticky {
-    position: relative;
-    top: auto;
-    flex: 0 0 auto;
-  }
-  body.is-searching .track-list {
-    min-height: 0;
-    flex: 1 1 auto;
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-  }
-}
 
 /* Shuffle and repeat only change their glyph color while pressed. */
 #shuffle-button,
