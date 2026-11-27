@@ -1075,16 +1075,34 @@
     els.nowFavorite.classList.toggle("active", active);
     els.nowFavorite.setAttribute("aria-label", active ? "Remove current track from favorites" : "Favorite current track");
   }
-  function syncSearchState() {
+  function syncSearchState(forceKeyboardClosed = false) {
     const searchFocused = document.activeElement === els.search;
     document.body.classList.toggle("is-searching", Boolean(els.search.value.trim()));
     const viewport = window.visualViewport;
     const mobile = window.matchMedia("(max-width: 699px)").matches;
-    const keyboardOpen = Boolean(mobile && searchFocused && viewport && (
-      viewport.height < window.innerHeight - 120 ||
-      (window.screen?.height && window.screen.height - viewport.height > 180)
+    const screenHeight = window.screen?.height || 0;
+    const keyboardThreshold = Math.max(220, screenHeight * 0.28);
+    const keyboardOpen = Boolean(!forceKeyboardClosed && mobile && searchFocused && viewport && (
+      window.innerHeight - viewport.height > 120 ||
+      (screenHeight && screenHeight - viewport.height > keyboardThreshold)
     ));
     document.body.classList.toggle("is-keyboard-open", keyboardOpen);
+  }
+  function syncMobileViewport() {
+    const viewportTop = Math.max(0, window.visualViewport?.offsetTop || 0);
+    els.librarySticky.style.top = `${viewportTop}px`;
+    const stickyHeight = els.librarySticky.getBoundingClientRect().height;
+    if (stickyHeight > 0) document.documentElement.style.setProperty("--library-sticky-height", `${stickyHeight}px`);
+  }
+  let viewportSyncPending = false;
+  function scheduleViewportSync() {
+    if (viewportSyncPending) return;
+    viewportSyncPending = true;
+    requestAnimationFrame(() => {
+      viewportSyncPending = false;
+      syncMobileViewport();
+      syncSearchState();
+    });
   }
   function toggleFavorite(track) {
     if (state.favorites.has(track.id)) {
@@ -1133,9 +1151,13 @@
     renderTracks();
   });
   els.search.addEventListener("focus", syncSearchState);
-  els.search.addEventListener("blur", syncSearchState);
-  window.visualViewport?.addEventListener("resize", syncSearchState);
-  window.addEventListener("resize", syncSearchState);
+  els.search.addEventListener("blur", () => syncSearchState(true));
+  window.visualViewport?.addEventListener("resize", scheduleViewportSync);
+  window.visualViewport?.addEventListener("scroll", scheduleViewportSync);
+  window.addEventListener("resize", scheduleViewportSync);
+  window.addEventListener("scroll", scheduleViewportSync, { passive: true });
+  window.addEventListener("orientationchange", scheduleViewportSync);
+  syncMobileViewport();
   els.clearSearch.addEventListener("pointerdown", (event) => event.preventDefault());
   els.clearSearch.addEventListener("click", () => {
     els.search.value = "";
