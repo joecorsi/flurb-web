@@ -762,6 +762,12 @@
     requestAnimationFrame(() => {
       const target = [...els.tableBody.querySelectorAll(".library-letter-row")].find((row) => row.dataset.letter === first);
       if (!target) return;
+      if (window.matchMedia("(max-width: 699px)").matches) {
+        const listRect = els.trackList.getBoundingClientRect();
+        const targetTop = target.getBoundingClientRect().top - listRect.top + els.trackList.scrollTop;
+        els.trackList.scrollTo({ top: targetTop, behavior: "smooth" });
+        return;
+      }
       const sticky = document.querySelector(".library-sticky");
       const offset = target.getBoundingClientRect().top - (sticky?.getBoundingClientRect().height || 0);
       window.scrollBy({ top: offset, behavior: "smooth" });
@@ -1089,10 +1095,16 @@
     document.body.classList.toggle("is-keyboard-open", keyboardOpen);
   }
   function syncMobileViewport() {
-    const viewportTop = Math.max(0, window.visualViewport?.offsetTop || 0);
+    const viewport = window.visualViewport;
+    const viewportTop = Math.max(0, viewport?.offsetTop || 0);
+    const viewportBottom = Math.max(0, window.innerHeight - viewportTop - (viewport?.height || window.innerHeight));
     els.librarySticky.style.top = `${viewportTop}px`;
+    document.documentElement.style.setProperty("--visual-viewport-top", `${viewportTop}px`);
+    document.documentElement.style.setProperty("--visual-viewport-bottom", `${viewportBottom}px`);
     const stickyHeight = els.librarySticky.getBoundingClientRect().height;
     if (stickyHeight > 0) document.documentElement.style.setProperty("--library-sticky-height", `${stickyHeight}px`);
+    const playerHeight = els.player.getBoundingClientRect().height;
+    if (playerHeight > 0) document.documentElement.style.setProperty("--player-height", `${playerHeight}px`);
   }
   let viewportSyncPending = false;
   function scheduleViewportSync() {
@@ -1100,8 +1112,8 @@
     viewportSyncPending = true;
     requestAnimationFrame(() => {
       viewportSyncPending = false;
-      syncMobileViewport();
       syncSearchState();
+      syncMobileViewport();
     });
   }
   function toggleFavorite(track) {
@@ -1158,6 +1170,11 @@
   window.addEventListener("scroll", scheduleViewportSync, { passive: true });
   window.addEventListener("orientationchange", scheduleViewportSync);
   syncMobileViewport();
+  if ("ResizeObserver" in window) {
+    const viewportSizeObserver = new ResizeObserver(scheduleViewportSync);
+    viewportSizeObserver.observe(els.librarySticky);
+    viewportSizeObserver.observe(els.player);
+  }
   els.clearSearch.addEventListener("pointerdown", (event) => event.preventDefault());
   els.clearSearch.addEventListener("click", () => {
     els.search.value = "";
