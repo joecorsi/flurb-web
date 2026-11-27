@@ -9,7 +9,7 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=playback-1">
+  <link rel="stylesheet" href="./styles.css?v=row-selection-1">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu" crossorigin="anonymous" defer></script>
   <script src="./turso-sync.js?v=turso-details-1" defer></script>
   <script src="./artwork-cache.js?v=1" defer></script>
@@ -30,10 +30,10 @@
             <div class="mode-picker">
             <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Recently added</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
             <div class="mode-menu" id="view-menu" role="menu" hidden>
-              <button type="button" role="menuitemradio" aria-checked="true" data-view="recent"><i class="view-option-icon" data-lucide="clock-3" aria-hidden="true"></i><span class="view-option-label">Recently added</span><span class="mode-count" id="recent-count">0</span></button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="favorites"><i class="view-option-icon" data-lucide="heart" aria-hidden="true"></i><span class="view-option-label">Favorites</span><span class="mode-count" id="favorites-count">0</span></button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="playlists"><i class="view-option-icon" data-lucide="list-music" aria-hidden="true"></i><span class="view-option-label">Playlists</span><span class="mode-count" id="playlists-count">0</span></button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="library"><i class="view-option-icon" data-lucide="library" aria-hidden="true"></i><span class="view-option-label">Library</span><span class="mode-count" id="library-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="true" data-view="recent"><i class="view-option-icon" data-lucide="clock-3" aria-hidden="true"></i><span class="view-option-check" aria-hidden="true">✓</span><span class="view-option-label">Recently added</span><span class="mode-count" id="recent-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="favorites"><i class="view-option-icon" data-lucide="heart" aria-hidden="true"></i><span class="view-option-check" aria-hidden="true">✓</span><span class="view-option-label">Favorites</span><span class="mode-count" id="favorites-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="playlists"><i class="view-option-icon" data-lucide="list-music" aria-hidden="true"></i><span class="view-option-check" aria-hidden="true">✓</span><span class="view-option-label">Playlists</span><span class="mode-count" id="playlists-count">0</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="library"><i class="view-option-icon" data-lucide="library" aria-hidden="true"></i><span class="view-option-check" aria-hidden="true">✓</span><span class="view-option-label">Library</span><span class="mode-count" id="library-count">0</span></button>
             </div>
             </div>
           </div>
@@ -81,7 +81,7 @@
       <button class="settings-scrim" type="button" aria-label="Close settings" data-close-settings></button>
       <section class="settings-dialog" role="dialog" aria-modal="true" aria-label="Flurb settings">
         <header class="settings-dialog-header"><strong>Settings</strong><button class="icon-button settings-close" id="settings-close" type="button" aria-label="Close settings"><i data-lucide="x" aria-hidden="true"></i></button></header>
-        <iframe class="settings-frame" id="settings-frame" src="./settings.html?embedded=1&v=turso-details-1" title="Flurb settings"></iframe>
+        <iframe class="settings-frame" id="settings-frame" src="./settings.html?embedded=1&v=row-selection-1" title="Flurb settings"></iframe>
       </section>
     </div>
     <dialog class="playlist-picker" id="playlist-picker" aria-labelledby="playlist-picker-title">
