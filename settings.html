@@ -7,16 +7,18 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=mobile-player-57">
+  <link rel="stylesheet" href="./styles.css?v=settings-2">
   <script src="./turso-sync.js?v=1" defer></script>
-  <script src="./settings.js?v=turso-1" defer></script>
+  <script src="./settings.js?v=settings-2" defer></script>
 </head>
 <body class="settings-page">
   <main class="settings-shell">
     <a class="settings-back" href="./">← Player</a>
-    <section class="settings-panel">
-      <h1>Dropbox</h1>
-      <button class="settings-connect" id="settings-connect" type="button">Connect Dropbox</button>
+    <section class="settings-panel" aria-labelledby="dropbox-heading">
+      <header class="settings-panel-header">
+        <h1 id="dropbox-heading">Dropbox</h1>
+        <button class="settings-connect" id="settings-connect" type="button">Connect Dropbox</button>
+      </header>
       <dl class="settings-account" id="dropbox-account" hidden>
         <div><dt>Account</dt><dd id="dropbox-account-email">—</dd></div>
         <div><dt>Name</dt><dd id="dropbox-account-name">—</dd></div>
@@ -32,14 +34,16 @@
       </div>
       <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
     </section>
-    <section class="settings-panel settings-panel-turso" aria-labelledby="turso-heading">
-      <h1 id="turso-heading">Turso</h1>
-      <form id="turso-form">
+    <section class="settings-panel" aria-labelledby="turso-heading">
+      <header class="settings-panel-header">
+        <h1 id="turso-heading">Turso</h1>
+        <button class="settings-connect" id="turso-connect" type="submit" form="turso-form">Connect Turso</button>
+      </header>
+      <form class="settings-account" id="turso-form">
         <label class="settings-field">Database URL<input id="turso-url" type="url" placeholder="libsql://…" required></label>
         <label class="settings-field">Database token<input id="turso-token" type="password" placeholder="Database-scoped token" autocomplete="off" required></label>
-        <button class="settings-connect" id="turso-connect" type="submit">Connect Turso</button>
-        <button class="settings-reconnect" id="turso-disconnect" type="button" hidden>Disconnect Turso</button>
       </form>
+      <button class="settings-reconnect" id="turso-disconnect" type="button" hidden>Disconnect Turso</button>
       <p id="turso-status" class="settings-status" role="status" aria-live="polite"></p>
     </section>
   </main>

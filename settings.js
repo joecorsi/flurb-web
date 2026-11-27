@@ -1,5 +1,6 @@
 (() => {
   "use strict";
+  const DROPBOX_SIGNED_OUT = "flurb.dropbox.signedOutAt";
   const APP_KEY = "b7db4q3upd3kspx";
   if (new URLSearchParams(location.search).get("embedded") === "1") document.body.classList.add("is-embedded");
   const API = "https://api.dropboxapi.com/2";
@@ -16,11 +17,30 @@
     loginDate: document.querySelector("#dropbox-login-date"),
     reconnect: document.querySelector("#settings-reconnect")
   };
-  let token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
-  let refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
-  let tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
+  let token = "";
+  let refreshToken = "";
+  let tokenExpiresAt = 0;
   let refreshPromise = null;
   let foldersLoaded = false;
+
+  function readDropboxSession() {
+    const signedOut = localStorage.getItem(DROPBOX_SIGNED_OUT);
+    token = signedOut ? "" : localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
+    refreshToken = signedOut ? "" : localStorage.getItem("flurb.dropbox.refreshToken") || "";
+    tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
+  }
+  function updateDropboxPanel() {
+    els.connect.textContent = token ? "Sign out" : "Connect Dropbox";
+    els.connect.classList.toggle("is-connected", Boolean(token));
+    els.library.hidden = !token;
+    els.account.hidden = !token;
+    if (!token) {
+      els.reconnect.hidden = true;
+      setFolderListOpen(false);
+      els.folders.replaceChildren();
+      foldersLoaded = false;
+    }
+  }
 
   function setFolderListOpen(open) {
     els.folders.hidden = !open;
@@ -77,22 +97,26 @@
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
-    els.connect.textContent = "Reconnect Dropbox";
-    els.connect.classList.remove("is-select-folder");
+    updateDropboxPanel();
   }
   async function ensureAccessToken(force = false) {
+    if (localStorage.getItem(DROPBOX_SIGNED_OUT)) throw new Error("Connect Dropbox in Settings.");
     if (!force && token && (!tokenExpiresAt || Date.now() < tokenExpiresAt - 60_000)) return token;
     if (!refreshToken) {
       if (token && !force) return token;
       throw new Error("Reconnect Dropbox once to enable a lasting session.");
     }
     if (!refreshPromise) {
+      const credential = refreshToken;
       refreshPromise = (async () => {
-        const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: APP_KEY });
+        const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: credential, client_id: APP_KEY });
         const response = await fetch("https://api.dropbox.com/oauth2/token", {
           method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form
         });
         const result = await response.json().catch(() => ({}));
+        if (credential !== localStorage.getItem("flurb.dropbox.refreshToken") || localStorage.getItem(DROPBOX_SIGNED_OUT)) {
+          throw new Error("Dropbox connection changed.");
+        }
         if (!response.ok) {
           if (/invalid_grant|invalid_refresh_token/i.test(`${result.error || ""} ${result.error_description || ""}`)) clearDropboxTokens();
           throw new Error(result.error_description || result.error || "Could not renew your Dropbox session.");
@@ -141,6 +165,7 @@
         response = await dropbox("/files/list_folder/continue", { cursor: response.cursor });
         folders.push(...(response.entries || []).filter((entry) => entry[".tag"] === "folder"));
       }
+      if (!token || localStorage.getItem(DROPBOX_SIGNED_OUT)) return;
       folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
       foldersLoaded = true;
       if (!folders.length) {
@@ -163,7 +188,7 @@
         els.folders.append(button);
       });
     } catch (error) {
-      status(error.message || "Could not load Dropbox folders.", true);
+      if (token) status(error.message || "Could not load Dropbox folders.", true);
     }
   }
 
@@ -182,9 +207,11 @@
     els.reconnect.hidden = Boolean(loginAt);
     try {
       const account = await dropbox("/users/get_current_account");
+      if (!token || localStorage.getItem(DROPBOX_SIGNED_OUT)) return;
       els.accountEmail.textContent = account.email || "—";
       els.accountName.textContent = account.name?.display_name || "—";
     } catch (error) {
+      if (!token) return;
       els.accountEmail.textContent = /missing_scope|insufficient_scope/i.test(error.message) ? "Reconnect to allow account details" : "Unavailable";
       if (/missing_scope|insufficient_scope/i.test(error.message)) els.reconnect.hidden = false;
       else status(error.message || "Could not load Dropbox account details.", true);
@@ -192,8 +219,16 @@
   }
 
   els.connect.addEventListener("click", () => {
-    if (token) listRootFolders();
-    else connectDropbox().catch((error) => status(error.message, true));
+    if (!token) {
+      connectDropbox().catch((error) => status(error.message, true));
+      return;
+    }
+    localStorage.setItem(DROPBOX_SIGNED_OUT, String(Date.now()));
+    localStorage.removeItem("flurb.dropbox.pkce");
+    sessionStorage.removeItem("flurb.dropbox.pkce");
+    clearDropboxTokens();
+    status("Signed out of Dropbox.");
+    notifyPlayer("flurb-dropbox-session-changed");
   });
   els.libraryToggle.addEventListener("click", () => {
     if (!els.folders.hidden) setFolderListOpen(false);
@@ -203,15 +238,23 @@
   els.reconnect.addEventListener("click", () => connectDropbox().catch((error) => status(error.message, true)));
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "flurb-dropbox-connected") return;
-    token = localStorage.getItem("flurb.dropbox.accessToken") || "";
-    refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
-    tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
+    readDropboxSession();
+    updateDropboxPanel();
     if (!token) return;
-    updateSelectedFolder();
-    els.connect.textContent = "Select music folder";
-    els.connect.classList.add("is-select-folder");
+    const selected = updateSelectedFolder();
     loadAccountDetails();
-    listRootFolders();
+    if (!selected) listRootFolders();
+    else status(`${selected.name} selected`);
+    notifyPlayer("flurb-dropbox-session-changed");
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key !== DROPBOX_SIGNED_OUT) return;
+    readDropboxSession();
+    updateDropboxPanel();
+    if (token) {
+      updateSelectedFolder();
+      loadAccountDetails();
+    } else status("Signed out of Dropbox.");
   });
   const cloud = window.FlurbCloud;
   const tursoForm = document.querySelector("#turso-form");
@@ -222,7 +265,7 @@
   const tursoStatus = document.querySelector("#turso-status");
   const setTursoStatus = (text, error = false) => {
     tursoStatus.textContent = text;
-    tursoStatus.classList.toggle("error", error);
+    tursoStatus.classList.toggle("is-error", error);
   };
   const notifyPlayer = (type) => {
     if (window.parent !== window) window.parent.postMessage({ type }, location.origin);
@@ -232,6 +275,7 @@
     tursoUrl.value = config?.origin || "";
     tursoDisconnect.hidden = !config;
     tursoConnect.textContent = config ? "Reconnect Turso" : "Connect Turso";
+    tursoConnect.classList.toggle("is-connected", Boolean(config));
   }
   tursoForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -274,23 +318,14 @@
     notifyPlayer("flurb-turso-status-request");
   }
 
-  token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
+  readDropboxSession();
+  updateDropboxPanel();
   if (token) {
     const selected = updateSelectedFolder();
-    els.library.hidden = false;
-    setFolderListOpen(false);
-    els.connect.textContent = "Select music folder";
-    els.connect.classList.add("is-select-folder");
     loadAccountDetails();
     if (selected?.name) status(`${selected.name} selected`);
     const justConnected = new URLSearchParams(location.search).get("connected") === "1";
-    if (justConnected || !selected?.name) {
-      history.replaceState({}, document.title, location.pathname);
-      listRootFolders();
-    }
-  } else {
-    els.connect.textContent = "Connect Dropbox";
-    els.account.hidden = true;
-    els.reconnect.hidden = true;
+    if (justConnected) history.replaceState({}, document.title, location.pathname);
+    if (!selected) listRootFolders();
   }
 })();

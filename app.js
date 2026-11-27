@@ -2,6 +2,9 @@
   "use strict";
   const API = "https://api.dropboxapi.com/2";
   const CATALOG_ROOT = "/catalog";
+  const DROPBOX_SIGNED_OUT = "flurb.dropbox.signedOutAt";
+  const readDropboxToken = () => localStorage.getItem(DROPBOX_SIGNED_OUT) ? ""
+    : localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
   const { FlurbCloud } = window;
   const ARTWORK_HEADER_BYTES = 64 * 1024;
   const appleTimestamp = () => Date.now() / 1000 - 978307200;
@@ -24,7 +27,7 @@
     toast: $("#toast"), settingsLink: $("#settings-link")
   };
   const state = {
-    token: localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "",
+    token: readDropboxToken(),
     refreshToken: localStorage.getItem("flurb.dropbox.refreshToken") || "",
     tokenExpiresAt: Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0),
     refreshPromise: null,
@@ -98,18 +101,23 @@
     updateConnection();
   }
   async function ensureAccessToken(force = false) {
+    if (localStorage.getItem(DROPBOX_SIGNED_OUT)) throw new Error("Connect Dropbox in Settings.");
     if (!force && state.token && (!state.tokenExpiresAt || Date.now() < state.tokenExpiresAt - 60_000)) return state.token;
     if (!state.refreshToken) {
       if (state.token && !force) return state.token;
       throw new Error("Reconnect Dropbox once to enable a lasting session.");
     }
     if (!state.refreshPromise) {
+      const credential = state.refreshToken;
       state.refreshPromise = (async () => {
-        const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: state.refreshToken, client_id: "b7db4q3upd3kspx" });
+        const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: credential, client_id: "b7db4q3upd3kspx" });
         const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
           method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form
         });
         const result = await response.json().catch(() => ({}));
+        if (credential !== localStorage.getItem("flurb.dropbox.refreshToken") || localStorage.getItem(DROPBOX_SIGNED_OUT)) {
+          throw new Error("Dropbox connection changed.");
+        }
         if (!response.ok) {
           if (/invalid_grant|invalid_refresh_token/i.test(`${result.error || ""} ${result.error_description || ""}`)) clearDropboxTokens();
           throw new Error(result.error_description || result.error || "Could not renew your Dropbox session.");
@@ -298,10 +306,12 @@
       return true;
     }
     try {
+      const signedOutAt = localStorage.getItem(DROPBOX_SIGNED_OUT);
       const form = new URLSearchParams({ code, grant_type: "authorization_code", client_id: "b7db4q3upd3kspx", code_verifier: pending.verifier, redirect_uri: pending.redirectUri });
       const response = await fetch("https://api.dropbox.com/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error_description || result.error || "Dropbox sign-in failed.");
+      if (signedOutAt !== localStorage.getItem(DROPBOX_SIGNED_OUT)) return true;
       state.token = result.access_token;
       if (result.refresh_token) {
         state.refreshToken = result.refresh_token;
@@ -313,6 +323,7 @@
       localStorage.setItem("flurb.dropbox.tokenExpiresAt", String(state.tokenExpiresAt));
       sessionStorage.setItem("flurb.dropbox.accessToken", state.token);
       sessionStorage.setItem("flurb.dropbox.tokenExpiresAt", String(state.tokenExpiresAt));
+      localStorage.removeItem(DROPBOX_SIGNED_OUT);
       if (window.opener && !window.opener.closed) {
         window.opener.postMessage({ type: "flurb-dropbox-connected" }, location.origin);
         window.close();
@@ -1603,9 +1614,26 @@
   window.addEventListener("resize", updateTitleMarquee);
   function refreshDropboxFolder() {
     try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) { state.libraryFolder = null; }
-    state.token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
+    state.token = readDropboxToken();
     state.refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
     state.tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
+    if (!state.token && state.current) {
+      state.playRequest += 1;
+      state.current = null;
+      state.libraryQueue = null;
+      state.loadingTrack = false;
+      els.audio.pause();
+      els.audio.removeAttribute("src");
+      els.audio.load();
+      closeArtworkViewer();
+      els.nowTitle.textContent = "Nothing playing yet";
+      els.nowAlbum.textContent = "";
+      updateTitleMarquee();
+      updateLibraryShuffleButton();
+      updateFavoriteButton();
+      updateTransport();
+      if (navigator.mediaSession) navigator.mediaSession.metadata = null;
+    }
     state.completedMetadata.clear();
     for (const queued of state.artworkQueue.splice(0)) state.artworkLoading.delete(queued.id);
     for (const link of state.artworkLinks.values()) URL.revokeObjectURL(link);
@@ -1619,12 +1647,13 @@
       refreshDropboxFolder();
       closeSettings();
     }
+    if (event.data?.type === "flurb-dropbox-session-changed") refreshDropboxFolder();
     if (event.data?.type === "flurb-turso-changed") loadCloudConfig();
     if (event.data?.type === "flurb-turso-status-request") sendCloudStatus();
   });
   window.addEventListener("storage", (event) => {
     if (event.key === "flurb.turso.connection") loadCloudConfig();
-    if (event.key === "flurb.dropbox.libraryFolder") refreshDropboxFolder();
+    if (event.key === "flurb.dropbox.libraryFolder" || event.key === DROPBOX_SIGNED_OUT) refreshDropboxFolder();
   });
   window.addEventListener("online", syncCloud);
   window.addEventListener("offline", syncCloud);
