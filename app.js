@@ -79,6 +79,9 @@
     shuffle: false,
     playback: null,
     audioTrackId: null,
+    audioLinkExpires: 0,
+    bufferingAudio: false,
+    playbackPosition: 0,
     playbackLinks: new Map(),
     repeat: "off",
     favorites: new Set(),
@@ -1677,11 +1680,11 @@
     return collect(state.entries.filter((folder) => folder.name.toLocaleLowerCase().includes(query)),
       filteredTracks(), state.folderPath === CATALOG_ROOT);
   }
-  function playbackLink(track) {
+  function playbackLink(track, refresh = false) {
     const path = dropboxTrackPath(track);
     const links = state.playbackLinks;
     const previous = links.get(path);
-    if (previous && previous.expires > Date.now()) return previous;
+    if (!refresh && previous && previous.expires > Date.now()) return previous;
     const entry = { expires: Date.now() + 2 * 60 * 60 * 1000 };
     entry.pending = dropbox("/files/get_temporary_link", { path }).then(({ link }) => {
       entry.link = link;
@@ -1719,21 +1722,45 @@
     updateLibraryShuffleButton();
     return playQueuedTrack();
   }
-  async function playQueuedTrack() {
+  async function startAudio() {
+    let timeout;
+    try {
+      await Promise.race([
+        els.audio.play(),
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("The audio stream did not start.")), 8000);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  function playAudioSource(track, entry, position) {
+    state.bufferingAudio = true;
+    state.playbackPosition = position;
+    els.audio.src = entry.link;
+    state.audioTrackId = track.id;
+    state.audioLinkExpires = entry.expires;
+    if (position > 0) els.audio.currentTime = position;
+    renderProgress();
+    return startAudio();
+  }
+  async function playQueuedTrack({ position = 0, refreshLink = false } = {}) {
     const track = state.catalog.get(FlurbPlayback.current(state.playback));
     if (!track) return;
     const requestId = ++state.playRequest;
     state.loadingTrack = true;
     state.current = track;
-    let started;
+    state.bufferingAudio = true;
+    state.playbackPosition = position;
+    renderProgress();
     try {
-      const entry = playbackLink(track);
-      if (entry.link) {
-        // Keep the same media element and start in the ended callback when its next link is ready.
-        els.audio.src = entry.link;
-        state.audioTrackId = track.id;
-        started = els.audio.play();
-      }
+      const entry = playbackLink(track, refreshLink);
+      // Use the prepared link on the ended callback's call stack.
+      const started = entry.link ? playAudioSource(track, entry, position) : entry.pending.then(() => {
+        if (requestId === state.playRequest) return playAudioSource(track, entry, position);
+      });
+      const result = started.catch((error) => error);
       prepareNextTrack();
       updatePlayerArtwork(track);
       queueTrackArtwork(track, true);
@@ -1741,14 +1768,15 @@
       els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
       updateFavoriteButton();
       renderTracks();
-      if (!started) {
-        const link = await entry.pending;
+      const error = await result;
+      if (requestId !== state.playRequest) return;
+      if (error) {
+        if (!entry.link || refreshLink || error.name === "NotAllowedError") throw error;
+        const replacement = playbackLink(track, true);
+        await replacement.pending;
         if (requestId !== state.playRequest) return;
-        els.audio.src = link;
-        state.audioTrackId = track.id;
-        started = els.audio.play();
+        await playAudioSource(track, replacement, position);
       }
-      await started;
       if (requestId === state.playRequest) hideNotice();
     } catch (error) {
       if (requestId === state.playRequest) {
@@ -1763,10 +1791,39 @@
       }
     }
   }
-  function resumePlayback() {
+  async function resumePlayback() {
+    if (state.loadingTrack) return;
     if (!state.playback || state.playback.finished) return startPlayback();
+    const { audio } = els;
     if (state.audioTrackId !== state.current?.id) return playQueuedTrack();
-    return els.audio.play().catch((error) => showNotice(friendlyError(error), "error"));
+    const position = audio.currentTime;
+    if (audio.error || state.audioLinkExpires <= Date.now()) {
+      return playQueuedTrack({ position, refreshLink: true });
+    }
+    const requestId = ++state.playRequest;
+    try {
+      // Call play in the media action itself so Safari can use the lock-screen gesture.
+      await startAudio();
+      if (requestId === state.playRequest) {
+        hideNotice();
+        prepareNextTrack();
+      }
+    } catch (error) {
+      if (requestId !== state.playRequest) return;
+      if (error.name === "NotAllowedError") {
+        showNotice(friendlyError(error), "error");
+        return;
+      }
+      return playQueuedTrack({ position, refreshLink: true });
+    }
+  }
+  function pausePlayback() {
+    state.playRequest += 1;
+    state.loadingTrack = false;
+    els.audio.pause();
+    state.bufferingAudio = false;
+    if (state.current) setPlayerMetadata(state.current);
+    updateTransport();
   }
   function setShuffle(enabled) {
     state.shuffle = enabled;
@@ -1808,7 +1865,7 @@
     if (!session?.setActionHandler) return;
     const actions = {
       play: resumePlayback,
-      pause: () => els.audio.pause(),
+      pause: pausePlayback,
       previoustrack: playPrevious,
       nexttrack: () => playNext(1),
       seekto: (details) => { if (Number.isFinite(details.seekTime)) els.audio.currentTime = details.seekTime; }
@@ -1894,18 +1951,22 @@
   }
   function renderProgress() {
     const duration = els.audio.duration;
+    if (!state.bufferingAudio && navigator.audioSession?.state !== "interrupted") {
+      state.playbackPosition = els.audio.currentTime;
+    }
+    const position = state.playbackPosition;
     if (Number.isFinite(duration) && duration > 0) {
-      els.progress.value = String((els.audio.currentTime / duration) * 100);
-      els.elapsed.textContent = formatTime(els.audio.currentTime);
+      els.progress.value = String((position / duration) * 100);
+      els.elapsed.textContent = formatTime(position);
       els.duration.textContent = formatTime(duration);
     } else {
       els.progress.value = "0";
-      els.elapsed.textContent = "0:00";
+      els.elapsed.textContent = formatTime(position);
       els.duration.textContent = "0:00";
     }
     els.progress.style.setProperty("--progress", `${Number(els.progress.value)}%`);
     if (Number.isFinite(duration) && duration > 0 && navigator.mediaSession?.setPositionState) {
-      try { navigator.mediaSession.setPositionState({ duration, playbackRate: els.audio.playbackRate || 1, position: Math.min(els.audio.currentTime, duration) }); } catch (_) {}
+      try { navigator.mediaSession.setPositionState({ duration, playbackRate: els.audio.playbackRate || 1, position: Math.min(position, duration) }); } catch (_) {}
     }
     updateTransport();
   }
@@ -2145,7 +2206,7 @@
   }, 5000);
   setInterval(checkVisibleArtwork, ARTWORK_REVISION_INTERVAL);
   els.play.addEventListener("click", () => {
-    if (!els.audio.paused) els.audio.pause();
+    if (!els.audio.paused) pausePlayback();
     else if (state.playback?.context === playbackContext() && !state.playback.finished) resumePlayback();
     else startPlayback();
   });
@@ -2175,7 +2236,16 @@
   els.audio.addEventListener("timeupdate", renderProgress);
   els.audio.addEventListener("loadedmetadata", () => { renderProgress(); renderTracks(); });
   els.audio.addEventListener("play", () => { updateTransport(); renderTracks(); });
-  els.audio.addEventListener("playing", registerMediaSessionActions);
+  els.audio.addEventListener("playing", () => {
+    state.bufferingAudio = false;
+    renderProgress();
+    registerMediaSessionActions();
+  });
+  els.audio.addEventListener("waiting", () => { state.bufferingAudio = !els.audio.paused; });
+  els.audio.addEventListener("seeked", () => {
+    if (els.audio.paused && !state.loadingTrack) state.bufferingAudio = false;
+    renderProgress();
+  });
   els.audio.addEventListener("pause", () => { updateTransport(); renderTracks(); });
   els.audio.addEventListener("ended", () => {
     if (!state.playback || state.repeat === "one" || state.audioTrackId !== state.current?.id) return;
@@ -2192,7 +2262,12 @@
 
 
   // Tell Safari and other supporting browsers this media should survive screen lock.
-  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (_) {}
+  try {
+    if (navigator.audioSession) {
+      navigator.audioSession.type = "playback";
+      navigator.audioSession.addEventListener?.("statechange", renderProgress);
+    }
+  } catch (_) {}
   registerMediaSessionActions();
   installHistoryNavigation();
   renderLucideIcons();
