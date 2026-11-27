@@ -35,6 +35,7 @@
     folderHistory: [],
     folderCache: new Map(),
     artworkLinks: new Map(),
+    metadataTitles: new Map(),
     artworkLoading: new Set(),
     artworkElements: new Map(),
     artworkObserver: null,
@@ -192,7 +193,7 @@
   function updateMediaMetadata(track) {
     if (!track || !navigator.mediaSession || !window.MediaMetadata) return;
     const metadata = {
-      title: track.name.replace(/\.[^.]+$/, ""),
+      title: state.metadataTitles.get(track.id) || track.name.replace(/\.[^.]+$/, ""),
       artist: playerArtist(track),
       album: playerAlbum(track)
     };
@@ -468,6 +469,76 @@
     }
     return clean.subarray(0, length);
   }
+  function decodeId3Text(payload) {
+    if (!payload?.length) return "";
+    const encoding = payload[0];
+    const data = payload.subarray(1);
+    let charset;
+    if (encoding === 0) charset = "windows-1252";
+    else if (encoding === 1) charset = data[0] === 0xfe && data[1] === 0xff ? "utf-16be" : "utf-16le";
+    else if (encoding === 2) charset = "utf-16be";
+    else if (encoding === 3) charset = "utf-8";
+    else return "";
+    try {
+      return new TextDecoder(charset).decode(data).split("\u0000", 1)[0].trim();
+    } catch (_) {
+      return "";
+    }
+  }
+  function extractId3v1Title(bytes) {
+    if (bytes.length < 128) return null;
+    const start = bytes.length - 128;
+    if (bytes[start] !== 0x54 || bytes[start + 1] !== 0x41 || bytes[start + 2] !== 0x47) return null;
+    const title = new TextDecoder("windows-1252").decode(bytes.subarray(start + 3, start + 33)).replace(/\u0000.*$/, "").trim();
+    return title || null;
+  }
+  function extractId3Title(buffer) {
+    let bytes = new Uint8Array(buffer);
+    if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return extractId3v1Title(bytes);
+    const version = bytes[3];
+    if (version < 2 || version > 4) return extractId3v1Title(bytes);
+    let tagSize = ((bytes[6] & 0x7f) << 21) | ((bytes[7] & 0x7f) << 14) | ((bytes[8] & 0x7f) << 7) | (bytes[9] & 0x7f);
+    let tagEnd = Math.min(bytes.length, 10 + tagSize);
+    if (version === 2 && (bytes[5] & 0x40)) return extractId3v1Title(bytes);
+    if (bytes[5] & 0x80) {
+      const tag = removeId3Unsynchronization(bytes.subarray(10, tagEnd));
+      const clean = new Uint8Array(10 + tag.length);
+      clean.set(bytes.subarray(0, 10));
+      clean.set(tag, 10);
+      bytes = clean;
+      tagSize = tag.length;
+      tagEnd = 10 + tagSize;
+    }
+    let offset = 10;
+    if ((bytes[5] & 0x40) && version === 3 && offset + 4 <= tagEnd) {
+      offset += 4 + new DataView(bytes.buffer, offset, 4).getUint32(0, false);
+    } else if ((bytes[5] & 0x40) && version === 4 && offset + 4 <= tagEnd) {
+      offset += id3FrameSize(bytes, offset, 4);
+    }
+    const titleFrame = version === 2 ? "TT2" : "TIT2";
+    while (offset < tagEnd) {
+      const headerSize = version === 2 ? 6 : 10;
+      if (offset + headerSize > tagEnd || bytes[offset] === 0) break;
+      const frameId = String.fromCharCode(...bytes.subarray(offset, offset + (version === 2 ? 3 : 4)));
+      const frameSize = version === 2
+        ? (bytes[offset + 3] << 16) | (bytes[offset + 4] << 8) | bytes[offset + 5]
+        : id3FrameSize(bytes, offset + 4, version);
+      if (!frameSize || offset + headerSize + frameSize > tagEnd) break;
+      let payload = bytes.subarray(offset + headerSize, offset + headerSize + frameSize);
+      const frameFlags = version === 2 ? 0 : bytes[offset + 9];
+      if ((version === 3 && (frameFlags & 0xc0)) || (version === 4 && (frameFlags & 0x0c))) {
+        offset += headerSize + frameSize;
+        continue;
+      }
+      if (version === 3 && (frameFlags & 0x20)) payload = payload.subarray(1);
+      if (version === 4 && (frameFlags & 0x40)) payload = payload.subarray(1);
+      if (version === 4 && (frameFlags & 0x01)) payload = payload.subarray(4);
+      if (version === 4 && (frameFlags & 0x02)) payload = removeId3Unsynchronization(payload);
+      if (frameId === titleFrame) return decodeId3Text(payload) || extractId3v1Title(bytes);
+      offset += headerSize + frameSize;
+    }
+    return extractId3v1Title(bytes);
+  }
   function extractId3Artwork(buffer) {
     let bytes = new Uint8Array(buffer);
     if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return null;
@@ -600,15 +671,18 @@
       const track = state.artworkQueue.shift();
       state.activeArtworkDownloads += 1;
       downloadTrackFile(track).then((buffer) => {
+        const title = extractId3Title(buffer);
+        if (title) state.metadataTitles.set(track.id, title);
         const cover = extractId3Artwork(buffer);
-        if (!cover) return;
-        const objectUrl = URL.createObjectURL(cover);
-        state.artworkLinks.set(track.id, objectUrl);
-        state.artworkElements.get(track.id)?.forEach((image) => {
-          image.src = objectUrl;
-          image.classList.add("has-artwork");
-          image.parentElement?.classList.add("has-artwork");
-        });
+        if (cover) {
+          const objectUrl = URL.createObjectURL(cover);
+          state.artworkLinks.set(track.id, objectUrl);
+          state.artworkElements.get(track.id)?.forEach((image) => {
+            image.src = objectUrl;
+            image.classList.add("has-artwork");
+            image.parentElement?.classList.add("has-artwork");
+          });
+        }
         if (state.current?.id === track.id) {
           updateMediaMetadata(track);
           updatePlayerArtwork(track);
