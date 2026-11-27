@@ -130,7 +130,7 @@
     }
     return state.refreshPromise;
   }
-  async function downloadTrackFile(track, retried = false) {
+  async function fetchTrackFile(track, retried = false) {
     const accessToken = await ensureAccessToken();
     const response = await fetch("https://content.dropboxapi.com/2/files/download", {
       method: "POST",
@@ -141,11 +141,11 @@
     });
     if (response.status === 401 && state.refreshToken && !retried) {
       await ensureAccessToken(true);
-      return downloadTrackFile(track, true);
+      return fetchTrackFile(track, true);
     }
     if (response.status === 401) clearDropboxTokens();
-    if (!response.ok) throw new Error(`Track artwork request failed (${response.status}).`);
-    return response.arrayBuffer();
+    if (!response.ok) throw new Error(`Track metadata request failed (${response.status}).`);
+    return response;
   }
   async function dropbox(path, body = {}, retried = false) {
     const accessToken = await ensureAccessToken();
@@ -192,10 +192,13 @@
     const relative = track.path_lower?.slice(root.length).split("/").filter(Boolean) || [];
     return relative.length > 2 ? relative[1] : relative.length > 1 ? relative[0] : state.folderName;
   }
+  function trackTitle(track) {
+    return state.metadataTitles.get(track.id) || track.name.replace(/\.[^.]+$/, "");
+  }
   function updateMediaMetadata(track) {
     if (!track || !navigator.mediaSession || !window.MediaMetadata) return;
     const metadata = {
-      title: state.metadataTitles.get(track.id) || track.name.replace(/\.[^.]+$/, ""),
+      title: trackTitle(track),
       artist: playerArtist(track),
       album: playerAlbum(track)
     };
@@ -203,7 +206,16 @@
     if (artwork) metadata.artwork = [{ src: artwork }];
     try { navigator.mediaSession.metadata = new MediaMetadata(metadata); } catch (_) {}
   }
+  function updatePlayerTitle(track) {
+    const title = trackTitle(track);
+    if (els.nowTitle.textContent !== title) {
+      els.nowTitle.textContent = title;
+      updateTitleMarquee();
+    }
+    els.nowPlayingLink.setAttribute("aria-label", `Open folder containing ${title}`);
+  }
   function setPlayerMetadata(track) {
+    updatePlayerTitle(track);
     els.nowAlbum.textContent = playerArtist(track);
     updateMediaMetadata(track);
   }
@@ -630,7 +642,7 @@
     else queueTrackArtwork(track);
   }
   function queueTrackArtwork(track) {
-    if (!track || state.artworkLinks.has(track.id) || state.artworkLoading.has(track.id)) return;
+    if (!track || state.metadataTitles.has(track.id) || state.artworkLoading.has(track.id)) return;
     state.artworkLoading.add(track.id);
     state.artworkQueue.push(track);
     pumpArtworkQueue();
@@ -644,7 +656,7 @@
   }
   function updateViewerArtwork(track) {
     const link = track && state.artworkLinks.get(track.id);
-    els.artworkViewerImage.alt = track ? `${track.name.replace(/\.[^.]+$/, "")} artwork` : "";
+    els.artworkViewerImage.alt = track ? `${trackTitle(track)} artwork` : "";
     if (link) els.artworkViewerImage.src = link;
     else els.artworkViewerImage.removeAttribute("src");
     els.artworkViewerCover.classList.toggle("has-artwork", Boolean(link));
@@ -668,14 +680,45 @@
     els.playerArtworkButton.setAttribute("aria-label", "View current track artwork");
     state.viewerTrack = null;
   }
+  let metadataReader;
+  async function readTrackMetadata(track) {
+    if (hasId3ArtworkSupport(track)) {
+      const response = await fetchTrackFile(track);
+      const buffer = await response.arrayBuffer();
+      return { title: extractId3Title(buffer), cover: extractId3Artwork(buffer) };
+    }
+    metadataReader ??= import("https://esm.sh/music-metadata@11.16.1?bundle&target=es2022");
+    const { parseWebStream } = await metadataReader;
+    const response = await fetchTrackFile(track);
+    try {
+      const { common } = await parseWebStream(response.body, {
+        path: track.name,
+        size: track.size || Number(response.headers.get("Content-Length")) || undefined
+      }, { skipCovers: true });
+      return { title: common.title?.trim() };
+    } finally {
+      await response.body?.cancel().catch(() => {});
+    }
+  }
+  function updateTrackRowTitle(row, track) {
+    const title = trackTitle(track);
+    const playing = Boolean(row.querySelector(".playing-speaker"));
+    row.setAttribute("aria-label", `${playing ? "Now playing" : "Play"} ${title}`);
+    row.querySelector(".track-name").textContent = title;
+    row.querySelector(".track-favorite").setAttribute("aria-label",
+      state.favorites.has(track.id) ? `Remove ${title} from favorites` : `Favorite ${title}`);
+    row.querySelector(".track-more").setAttribute("aria-label", `More actions for ${title}`);
+  }
   function pumpArtworkQueue() {
     while (state.activeArtworkDownloads < 2 && state.artworkQueue.length) {
       const track = state.artworkQueue.shift();
       state.activeArtworkDownloads += 1;
-      downloadTrackFile(track).then((buffer) => {
-        const title = extractId3Title(buffer);
-        if (title) state.metadataTitles.set(track.id, title);
-        const cover = extractId3Artwork(buffer);
+      readTrackMetadata(track).then(({ title, cover }) => {
+        state.metadataTitles.set(track.id, title || null);
+        if (title) {
+          els.tableBody.querySelectorAll(`.track-row[data-track-id="${CSS.escape(track.id)}"]`)
+            .forEach((row) => updateTrackRowTitle(row, track));
+        }
         if (cover) {
           const objectUrl = URL.createObjectURL(cover);
           state.artworkLinks.set(track.id, objectUrl);
@@ -686,6 +729,7 @@
           });
         }
         if (state.current?.id === track.id) {
+          updatePlayerTitle(track);
           updateMediaMetadata(track);
           updatePlayerArtwork(track);
         }
@@ -805,7 +849,7 @@
   }
   function filteredTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
-    return visibleTracks().filter((track) => !query || track.name.toLocaleLowerCase().includes(query));
+    return visibleTracks().filter((track) => !query || trackTitle(track).toLocaleLowerCase().includes(query) || track.name.toLocaleLowerCase().includes(query));
   }
   function visibleTracks() {
     if (state.viewMode === "favorites") {
@@ -1042,8 +1086,7 @@
     row.setAttribute("tabindex", "0");
     const isCurrent = state.current?.id === track.id;
     const isPlaying = isCurrent && !els.audio.paused && !els.audio.ended;
-    const trackName = track.name.replace(/\.[^.]+$/, "");
-    row.setAttribute("aria-label", `${isPlaying ? "Now playing" : "Play"} ${trackName}`);
+    row.dataset.trackId = track.id;
     row.className = `library-row track-row${isCurrent ? " is-playing" : ""}`;
     const artworkShell = document.createElement("span");
     artworkShell.className = "track-artwork-shell";
@@ -1061,13 +1104,12 @@
       artwork.width = 44;
       artwork.height = 44;
       artworkShell.append(artwork, placeholder);
-      if (hasId3ArtworkSupport(track)) registerTrackArtwork(artwork, track);
+      registerTrackArtwork(artwork, track);
     }
     const copy = document.createElement("div");
     copy.className = "track-copy";
     const title = document.createElement("span");
     title.className = "track-name";
-    title.textContent = trackName;
     const meta = document.createElement("span");
     meta.className = "track-meta";
     meta.textContent = playerArtist(track);
@@ -1077,11 +1119,10 @@
     const favorite = document.createElement("button");
     favorite.type = "button";
     favorite.className = `icon-button track-favorite${state.favorites.has(track.id) ? " active" : ""}`;
-    favorite.setAttribute("aria-label", state.favorites.has(track.id) ? `Remove ${track.name} from favorites` : `Favorite ${track.name}`);
     favorite.innerHTML = '<i data-lucide="heart" aria-hidden="true"></i>';
     favorite.addEventListener("click", (event) => { event.stopPropagation(); toggleFavorite(track); });
     const overflow = document.createElement("div"); overflow.className = "track-overflow";
-    const more = document.createElement("button"); more.type = "button"; more.className = "icon-button track-more"; more.setAttribute("aria-label", `More actions for ${track.name}`); more.innerHTML = '<i data-lucide="ellipsis" aria-hidden="true"></i>';
+    const more = document.createElement("button"); more.type = "button"; more.className = "icon-button track-more"; more.innerHTML = '<i data-lucide="ellipsis" aria-hidden="true"></i>';
     const menu = document.createElement("div"); menu.className = "track-overflow-menu"; menu.hidden = true;
     const add = document.createElement("button"); add.type = "button"; add.textContent = "Add to playlist";
     const submenu = document.createElement("div"); submenu.className = "playlist-submenu"; submenu.hidden = true;
@@ -1097,6 +1138,7 @@
     overflow.append(more, menu);
     actions.append(favorite, overflow);
     row.append(artworkShell, copy, actions);
+    updateTrackRowTitle(row, track);
     row.addEventListener("click", (event) => {
       if (!event.target.closest("button")) playTrack(track);
     });
@@ -1119,9 +1161,7 @@
     state.loadingTrack = true;
     state.current = track;
     updatePlayerArtwork(track);
-    if (hasId3ArtworkSupport(track)) queueTrackArtwork(track);
-    els.nowTitle.textContent = track.name.replace(/\.[^.]+$/, "");
-    updateTitleMarquee();
+    queueTrackArtwork(track);
     setPlayerMetadata(track);
     if (state.loadingTrack) els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
     els.nowFavorite.disabled = false;
@@ -1280,7 +1320,7 @@
     els.play.disabled = !hasTrack || state.loadingTrack;
     els.nowPlayingLink.disabled = !hasTrack;
     els.playerArtworkButton.disabled = !state.current || !state.artworkLinks.has(state.current.id);
-    els.nowPlayingLink.setAttribute("aria-label", hasTrack ? `Open folder containing ${state.current.name.replace(/\.[^.]+$/, "")}` : "Nothing playing");
+    els.nowPlayingLink.setAttribute("aria-label", hasTrack ? `Open folder containing ${trackTitle(state.current)}` : "Nothing playing");
     els.previous.disabled = !hasTrack;
     els.next.disabled = !hasTrack;
     els.progress.disabled = !hasTrack || !Number.isFinite(els.audio.duration);

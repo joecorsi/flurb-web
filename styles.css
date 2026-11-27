@@ -1327,7 +1327,6 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .player .transport .play-button,
 .player #now-favorite.active,
 .player #now-favorite:active:not(:disabled) { color: #fff !important; }
-.player #now-favorite:not(.active):not(:active) { color: #808286; }
 .player .transport button:focus-visible,
 .player #now-favorite:focus-visible { outline: 1px solid #fff !important; outline-offset: -2px; }
 .transport { grid-area: transport; }
@@ -1392,10 +1391,13 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .player #now-favorite:active,
 .player #now-favorite:focus,
 .player #now-favorite:focus-visible {
-  color: #a54fff !important;
   outline: none !important;
   box-shadow: none !important;
   border-color: transparent !important;
   background: transparent !important;
   -webkit-tap-highlight-color: transparent;
 }
+
+.player #now-favorite:not(.active):not(:active),
+.track-favorite:not(.active):not(:active) { color: #bcbcbc !important; }
+.player #now-favorite.active { color: #a54fff !important; }
