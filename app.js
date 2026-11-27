@@ -52,6 +52,8 @@
     loadingTrack: false,
     shuffle: false,
     libraryQueue: null,
+    preparedLibraryTrack: null,
+    shuffleFolderRequests: new Map(),
     libraryShuffleRequest: 0,
     repeat: "off",
     favorites: new Set(JSON.parse(localStorage.getItem("flurb.dropbox.favorites") || "[]")),
@@ -354,8 +356,8 @@
       showNotice(friendlyError(error), "error");
     }
   }
-  async function listFolder(path, recursive = false) {
-    let response = await dropbox("/files/list_folder", { path, recursive, include_deleted: false });
+  async function listFolder(path) {
+    let response = await dropbox("/files/list_folder", { path, recursive: false, include_deleted: false });
     let entries = [...(response.entries || [])];
     while (response.has_more) {
       response = await dropbox("/files/list_folder/continue", { cursor: response.cursor });
@@ -743,6 +745,7 @@
     state.folderPicker = false;
     state.folderHistory = [];
     state.folderCache.clear();
+    state.shuffleFolderRequests.clear();
     updateConnection();
     await loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name);
   }
@@ -772,12 +775,13 @@
       state.tracks = state.entries.filter(isAudio).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
       updateQuickActions();
       renderTracks();
+      if (path === root && state.viewMode === "library") prepareLibraryTrack();
       hideNotice();
       return;
     }
     try {
       // Browse one level at a time. Every request is checked against the one selected library root.
-      const entries = await listFolder(path, false);
+      const entries = await listFolder(path);
       if (request !== state.navigationRequest) return;
       state.entries = entries.filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
       state.folderCache.set(path, state.entries);
@@ -785,6 +789,7 @@
       updateQuickActions();
       renderTracks();
       hideNotice();
+      if (path === root && state.viewMode === "library") prepareLibraryTrack();
       if (!state.tracks.length && !state.entries.some(isFolder)) showNotice("No playable tracks found in this folder.");
     } catch (error) {
       if (request !== state.navigationRequest) return;
@@ -1151,50 +1156,96 @@
   function updateLibraryShuffleButton() {
     els.shuffleLibrary.setAttribute("aria-pressed", String(Boolean(state.shuffle && state.libraryQueue)));
   }
-  async function listLibraryTracks(root, isCurrentRequest) {
-    const tracks = new Map();
-    const collect = (entries) => {
-      for (const entry of entries) {
-        if (isAudio(entry) && isInsideLibrary(entry)) tracks.set(entry.id, entry);
-      }
-    };
-    try {
-      collect(await listFolder(root.path_lower, true));
-    } catch (_) {
-      // Large libraries can fail a recursive Dropbox request while one-level listings still work.
-      const folders = [root.path_lower];
-      for (let index = 0; index < folders.length && isCurrentRequest(); index += 1) {
-        const entries = await listFolder(folders[index]);
-        collect(entries);
-        for (const entry of entries) {
-          if (isFolder(entry) && isInsideLibrary(entry)) folders.push(entry.path_lower);
+  async function pickLibraryTrack(root, excludedId) {
+    let firstError;
+    const branches = [{ path_lower: root.path_lower, ".tag": "folder" }];
+    while (branches.length && state.libraryFolder === root) {
+      const branch = branches.pop();
+      if (isAudio(branch)) return branch;
+      const path = branch.path_lower;
+      let entries = state.folderCache.get(path);
+      if (!entries) {
+        try {
+          let request = state.shuffleFolderRequests.get(path);
+          if (!request) {
+            request = listFolder(path).finally(() => {
+              if (state.shuffleFolderRequests.get(path) === request) state.shuffleFolderRequests.delete(path);
+            });
+            state.shuffleFolderRequests.set(path, request);
+          }
+          entries = (await request).filter((entry) => (isFolder(entry) || isAudio(entry)) && isInsideLibrary(entry));
+        } catch (error) {
+          firstError ??= error;
+          continue;
         }
+        if (state.libraryFolder !== root) return null;
+        state.folderCache.set(path, entries);
       }
+      const candidates = entries.filter((entry) => isFolder(entry) || entry.id !== excludedId);
+      // Randomize siblings so the next branch is random while empty branches can be skipped.
+      for (let index = candidates.length - 1; index > 0; index -= 1) {
+        const randomIndex = Math.floor(Math.random() * (index + 1));
+        [candidates[index], candidates[randomIndex]] = [candidates[randomIndex], candidates[index]];
+      }
+      for (const entry of candidates) branches.push(entry);
     }
-    return [...tracks.values()];
+    if (firstError) throw firstError;
+    return null;
   }
-  async function shuffleLibrary() {
+  function prepareLibraryTrack(excludedId = state.current?.id) {
     const root = state.libraryFolder;
-    if (!root || els.shuffleLibrary.hidden) return;
+    if (!root) return null;
+    const existing = state.preparedLibraryTrack;
+    if (existing?.root === root && existing.excludedId === excludedId) return existing;
+    const prepared = { root, excludedId, track: null };
+    prepared.promise = pickLibraryTrack(root, excludedId).then((track) => {
+      prepared.track = track;
+      return { track };
+    }, (error) => ({ error }));
+    state.preparedLibraryTrack = prepared;
+    return prepared;
+  }
+  async function shuffleLibrary(start = true) {
+    const root = state.libraryFolder;
+    if (!root || (start && els.shuffleLibrary.hidden) || els.shuffleLibrary.disabled) return;
     const request = ++state.libraryShuffleRequest;
-    const isCurrentRequest = () => request === state.libraryShuffleRequest && state.libraryFolder?.id === root.id;
+    const isCurrentRequest = () => request === state.libraryShuffleRequest && state.libraryFolder === root;
     els.shuffleLibrary.disabled = true;
     els.shuffleLibrary.setAttribute("aria-busy", "true");
     try {
-      const tracks = state.libraryQueue || await listLibraryTracks(root, isCurrentRequest);
+      const current = state.current;
+      const prepared = prepareLibraryTrack(current?.id);
+      let track = prepared.track;
+      if (!track && start) {
+        const cached = [...state.folderCache.values()].flat().filter((entry) => isAudio(entry) && entry.id !== current?.id && isInsideLibrary(entry));
+        if (cached.length) track = cached[Math.floor(Math.random() * cached.length)];
+      }
+      if (!track) {
+        const result = await prepared.promise;
+        if (result.error) throw result.error;
+        track = result.track;
+      }
       if (!isCurrentRequest()) return;
-      if (!tracks.length) return toast("No playable tracks in this library");
+      if (!track && current && isInsideLibrary(current)) track = current;
+      if (!track) return toast("No playable tracks in this library");
+      const queue = start || !state.libraryQueue ? [] : state.libraryQueue;
+      if (!queue.some((entry) => entry.id === track.id)) queue.push(track);
       setShuffle(true);
-      const track = tracks[Math.floor(Math.random() * tracks.length)];
-      await playTrack(track, tracks);
+      const playback = playTrack(track, queue);
+      prepareLibraryTrack(track.id);
+      await playback;
     } catch (error) {
-      if (isCurrentRequest()) showNotice(`Could not load the library for shuffle. ${friendlyError(error)}`, "error");
+      if (isCurrentRequest()) {
+        state.preparedLibraryTrack = null;
+        showNotice(`Could not load a track for library shuffle. ${friendlyError(error)}`, "error");
+      }
     } finally {
       els.shuffleLibrary.disabled = false;
       els.shuffleLibrary.removeAttribute("aria-busy");
     }
   }
   function playNext(direction = 1) {
+    if (direction > 0 && state.shuffle && state.libraryQueue) return shuffleLibrary(false);
     const playlist = state.libraryQueue || visibleTracks();
     if (!playlist.length) return;
     const currentIndex = playlist.findIndex((track) => track.id === state.current?.id);
@@ -1456,6 +1507,11 @@
     if (event.origin !== location.origin || event.data?.type !== "flurb-library-selected") return;
     try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) { state.libraryFolder = null; }
     state.folderHistory = []; state.folderCache.clear(); closeSettings(); updateConnection();
+    state.libraryShuffleRequest += 1;
+    state.libraryQueue = null;
+    state.preparedLibraryTrack = null;
+    state.shuffleFolderRequests.clear();
+    updateLibraryShuffleButton();
     if (state.libraryFolder?.path_lower) loadLibraryFolder(state.libraryFolder.path_lower, state.libraryFolder.name).catch((error) => showNotice(friendlyError(error), "error"));
   });
   els.play.addEventListener("click", () => {
@@ -1470,7 +1526,7 @@
     else playNext(-1);
   });
   els.next.addEventListener("click", () => playNext(1));
-  els.shuffleLibrary.addEventListener("click", shuffleLibrary);
+  els.shuffleLibrary.addEventListener("click", () => shuffleLibrary());
   els.shuffle.addEventListener("click", () => {
     state.libraryShuffleRequest += 1;
     setShuffle(!state.shuffle);
