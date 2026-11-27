@@ -217,12 +217,39 @@
     });
   }
 
+  async function pullRecentCutoff(config, token, onUpdate) {
+    let rows;
+    try {
+      rows = await execute(config.origin, token, "SELECT period,custom_cutoff FROM flurb_cloud_recent_cutoff WHERE id=1");
+    } catch (error) {
+      // Older Flurb Rust builds only keep this preference on the desktop.
+      if (/no such table/i.test(error.message)) return;
+      throw error;
+    }
+    const [period, timestamp] = rows[0] || [];
+    if (period !== "week" && period !== "month" &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(period) || !Number.isSafeInteger(timestamp))) return;
+    if (!activeConfig(config)) return;
+    const cutoff = { period, timestamp: Number.isSafeInteger(timestamp) ? timestamp : null };
+    const sameCutoff = (cache) => cache.recentCutoff?.period === cutoff.period && cache.recentCutoff.timestamp === cutoff.timestamp;
+    if (sameCutoff(await load(config))) return;
+    const next = await record(cacheKey(config), (saved) => {
+      const cache = saved || emptyCache();
+      if (!sameCutoff(cache)) {
+        cache.recentCutoff = cutoff;
+        cache.generation += 1;
+      }
+      return cache;
+    });
+    if (activeConfig(config)) onUpdate(next);
+  }
   async function sync(config, onUpdate) {
     const run = async () => {
       const token = await record(tokenKey(config));
       if (!token || !activeConfig(config)) return;
       const id = await identity(config.origin, token);
       if (id !== config.id) throw new Error("The Turso library changed. Reconnect in Settings.");
+      await pullRecentCutoff(config, token, onUpdate);
       while (activeConfig(config)) {
         const local = await load(config);
         const outgoing = local.pending.slice(0, 4);

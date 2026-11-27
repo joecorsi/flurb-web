@@ -8,6 +8,8 @@ Flurb Web is a static browser player. It synchronizes the catalog, favorites, an
 2. In Flurb Web, open Settings and enter the same database URL and a database-scoped token with read/write access. Use a token created for that database, for example with `turso db tokens create <database-name>`.
 3. Connect Dropbox and select the folder that contains the same music tree. A track whose shared path is `Artist/Album/Track.mp3` uses that path inside the selected folder.
 
+Recently added follows the cutoff published by Flurb Rust. Until a compatible Rust build publishes a cutoff, it uses the same 30-day default.
+
 Flurb Web stores the Turso token in this browser's IndexedDB and sends it only to the selected Turso database. Disconnect in Settings removes the token from the browser. Expired tokens can be replaced by reconnecting to the same database. Old Dropbox-only favorites and playlists are not imported into an existing shared library.
 
 ## Offline and sync

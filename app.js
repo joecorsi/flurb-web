@@ -8,7 +8,8 @@
   const { FlurbCloud, FlurbArtworkCache } = window;
   const ARTWORK_HEADER_BYTES = 64 * 1024;
   const ARTWORK_REVISION_INTERVAL = 60000;
-  const appleTimestamp = () => Date.now() / 1000 - 978307200;
+  const APPLE_EPOCH_OFFSET = 978307200;
+  const appleTimestamp = () => Date.now() / 1000 - APPLE_EPOCH_OFFSET;
   const $ = (selector) => document.querySelector(selector);
   function renderLucideIcons(root = document) {
     if (window.lucide?.createIcons) window.lucide.createIcons({ root });
@@ -69,6 +70,7 @@
     searchScroll: null,
     recentGridReturn: null,
     recentAlbumCache: null,
+    recentAlbumWindow: null,
     current: null,
     viewerTrack: null,
     loadingTrack: false,
@@ -873,7 +875,17 @@
       queueTrackArtwork(state.catalog.get(id), false, true);
     }
   }
-  const addedDate = (track) => Number(track.flurb_added ?? track.added) || 0;
+  function addedDate(track) {
+    if (Number.isFinite(track.flurb_added)) return track.flurb_added;
+    return Number.isFinite(track.added) ? track.added : -Infinity;
+  }
+  function recentCutoff() {
+    const cutoff = state.cloudSnapshot?.recentCutoff;
+    if (Number.isSafeInteger(cutoff?.timestamp)) return cutoff.timestamp;
+    // Match Rust's minute bucket and Apple-epoch Date Added values.
+    const now = Math.floor(Date.now() / 60000) * 60 - APPLE_EPOCH_OFFSET;
+    return now - (cutoff?.period === "week" ? 7 : 30) * 86400;
+  }
   const recentlyAdded = (a, b) => addedDate(b) - addedDate(a);
   const artistName = (track) => track.album_artist?.trim() || track.artist?.trim() || "Unknown Artist";
   const artistPath = (track) => `${CATALOG_ROOT}/${encodeURIComponent(artistName(track))}`;
@@ -1100,9 +1112,10 @@
         compare(playerArtist(a), playerArtist(b)) || compare(trackTitle(a), trackTitle(b)));
     }
     if (state.viewMode === "recent") {
-      return state.folderPath === CATALOG_ROOT
-        ? [...state.catalog.values()].sort(recentlyAdded)
-        : state.tracks.slice().sort(albumTrackOrder);
+      const cutoff = recentCutoff();
+      const root = state.folderPath === CATALOG_ROOT;
+      const tracks = root ? [...state.catalog.values()] : state.tracks;
+      return tracks.filter((track) => addedDate(track) >= cutoff).sort(root ? recentlyAdded : albumTrackOrder);
     }
     if (state.viewMode === "playlists") return state.playlists.find((playlist) => playlist.id === state.activePlaylistId)?.tracks || [];
     return state.tracks;
@@ -1219,9 +1232,30 @@
   }
   function recentAlbums(query) {
     state.recentAlbumCache ??= buildRecentAlbums();
-    if (!query) return state.recentAlbumCache;
-    return state.recentAlbumCache.filter((album) =>
+    const source = state.recentAlbumCache;
+    const cutoff = recentCutoff();
+    const previous = state.recentAlbumWindow;
+    if (previous?.source !== source || previous.cutoff !== cutoff) {
+      const albums = source.filter((album) => album.added >= cutoff);
+      state.recentAlbumWindow = {
+        source, cutoff,
+        albums: previous?.source === source && albums.length === previous.albums.length ? previous.albums : albums
+      };
+    }
+    const albums = state.recentAlbumWindow.albums;
+    if (!query) return albums;
+    return albums.filter((album) =>
       [album.name, album.artist].some((name) => name.toLocaleLowerCase().includes(query)));
+  }
+  function refreshRecentCutoff() {
+    if (!state.cloudSnapshot || state.recentAlbumWindow?.cutoff === recentCutoff()) return;
+    updateQuickActions();
+    if (state.viewMode === "recent") {
+      const scroll = catalogScroller();
+      const top = scroll.scrollTop;
+      renderTracks(false);
+      scroll.scrollTo({ top, behavior: "instant" });
+    }
   }
   function makeRecentAlbumTile(album) {
     const item = document.createElement("div");
@@ -1988,7 +2022,10 @@
     syncCloud();
     checkVisibleArtwork();
   });
-  setInterval(syncCloud, 5000);
+  setInterval(() => {
+    refreshRecentCutoff();
+    syncCloud();
+  }, 5000);
   setInterval(checkVisibleArtwork, ARTWORK_REVISION_INTERVAL);
   els.play.addEventListener("click", () => {
     if (!state.current) return;
