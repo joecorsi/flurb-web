@@ -53,6 +53,9 @@
     artworkObserver: null,
     artworkQueue: [],
     activeArtworkDownloads: 0,
+    preloadingArtwork: false,
+    recentArtworkPreload: null,
+    recentArtworkElements: new Map(),
     titleScrollGesture: false,
     entries: [],
     tracks: [],
@@ -561,6 +564,11 @@
     }
     return null;
   }
+  function setArtworkImage(image, link) {
+    image.src = link;
+    image.classList.add("has-artwork");
+    image.parentElement?.classList.add("has-artwork");
+  }
   function registerTrackArtwork(image, track) {
     image._flurbTrack = track;
     let elements = state.artworkElements.get(track.id);
@@ -568,9 +576,7 @@
     elements.add(image);
     const cached = state.artworkLinks.get(track.id);
     if (cached) {
-      image.src = cached;
-      image.classList.add("has-artwork");
-      image.parentElement?.classList.add("has-artwork");
+      setArtworkImage(image, cached);
       return;
     }
     if (!state.artworkObserver && "IntersectionObserver" in window) {
@@ -578,7 +584,7 @@
         observations.forEach((observation) => {
           if (!observation.isIntersecting) return;
           state.artworkObserver.unobserve(observation.target);
-          queueTrackArtwork(observation.target._flurbTrack);
+          queueTrackArtwork(observation.target._flurbTrack, true);
         });
       }, { rootMargin: "220px 0px" });
     }
@@ -702,9 +708,45 @@
       state.favorites.has(track.id) ? `Remove ${title} from favorites` : `Favorite ${title}`);
     row.querySelector(".track-more").setAttribute("aria-label", `More actions for ${title}`);
   }
+  function isRecentlyAddedGrid() {
+    return Boolean(state.cloudSnapshot && state.viewMode === "recent" && state.folderPath === CATALOG_ROOT);
+  }
+  function nextRecentArtworkTrack() {
+    if (!isRecentlyAddedGrid() || !state.token || !state.libraryFolder || !navigator.onLine) return null;
+    const albums = recentAlbums("");
+    if (state.recentArtworkPreload?.albums !== albums) {
+      state.recentArtworkPreload = { albums, index: 0, candidates: null };
+    }
+    const preload = state.recentArtworkPreload;
+    while (preload.index < albums.length) {
+      const album = albums[preload.index];
+      preload.candidates ??= artworkCandidates(album);
+      if (!album.tracks.some((track) => state.artworkLinks.has(track.id))) {
+        while (preload.candidates.length) {
+          const track = preload.candidates[0];
+          // A visible tile is already trying this track. Wait for its result.
+          if (state.artworkLoading.has(track.id)) return null;
+          preload.candidates.shift();
+          if (!state.completedMetadata.has(track.id)) return track;
+        }
+      }
+      preload.index += 1;
+      preload.candidates = null;
+    }
+    return null;
+  }
   function pumpArtworkQueue() {
-    while (state.activeArtworkDownloads < 2 && state.artworkQueue.length) {
-      const track = state.artworkQueue.shift();
+    while (state.activeArtworkDownloads < 2) {
+      let track = state.artworkQueue.shift();
+      const preload = !track;
+      if (preload) {
+        // Leave room for visible artwork and the player when preloading.
+        if (state.preloadingArtwork) return;
+        track = nextRecentArtworkTrack();
+        if (!track) return;
+        state.preloadingArtwork = true;
+        state.artworkLoading.add(track.id);
+      }
       const folder = state.libraryFolder;
       state.activeArtworkDownloads += 1;
       const readArtwork = /\.flac$/i.test(track.name) ? readFlacArtwork : readMp3Artwork;
@@ -722,11 +764,12 @@
         }
         const link = URL.createObjectURL(cover);
         state.artworkLinks.set(track.id, link);
-        state.artworkElements.get(track.id)?.forEach((image) => {
-          image.src = link;
-          image.classList.add("has-artwork");
-          image.parentElement?.classList.add("has-artwork");
-        });
+        state.artworkElements.get(track.id)?.forEach((image) => setArtworkImage(image, link));
+        const albumImage = state.recentArtworkElements.get(recentAlbumPath(track));
+        if (albumImage && !albumImage.classList.contains("has-artwork")) {
+          state.artworkObserver?.unobserve(albumImage);
+          setArtworkImage(albumImage, link);
+        }
         if (state.current?.id === track.id) {
           updateMediaMetadata(state.current);
           updatePlayerArtwork(state.current);
@@ -735,6 +778,7 @@
       }).catch(() => {}).finally(() => {
         state.artworkLoading.delete(track.id);
         state.activeArtworkDownloads -= 1;
+        if (preload) state.preloadingArtwork = false;
         pumpArtworkQueue();
       });
     }
@@ -1026,11 +1070,17 @@
     refreshCatalogView(false);
     catalogScroller().scrollTo({ top: previous?.top ?? 0, behavior: "instant" });
   }
+  function recentAlbumPath(track) {
+    return compilationAlbumPath(track) || albumPath(track);
+  }
+  function artworkCandidates(album) {
+    return album.tracks.filter(supportsArtwork).sort(albumTrackOrder).slice(0, 3);
+  }
   function buildRecentAlbums() {
     const albums = new Map();
     for (const track of state.catalog.values()) {
       const compilation = compilationAlbumPath(track);
-      const path = compilation || albumPath(track);
+      const path = recentAlbumPath(track);
       if (!albums.has(path)) {
         albums.set(path, {
           path, name: track.album?.trim() || "Unknown Album", artist: compilation ? "Various Artists" : artistName(track),
@@ -1059,6 +1109,7 @@
     button.setAttribute("aria-label", `Open ${album.name} by ${album.artist}`);
     const image = document.createElement("img");
     image.alt = "";
+    state.recentArtworkElements.set(album.path, image);
     const fallback = document.createElement("span");
     fallback.className = "recent-album-label";
     fallback.setAttribute("aria-hidden", "true");
@@ -1073,8 +1124,7 @@
     const cached = album.tracks.find((track) => state.artworkLinks.has(track.id));
     if (cached) registerTrackArtwork(image, cached);
     else {
-      const candidates = album.tracks.filter((track) => supportsArtwork(track) && !state.completedMetadata.has(track.id))
-        .sort(albumTrackOrder).slice(0, 3);
+      const candidates = artworkCandidates(album).filter((track) => !state.completedMetadata.has(track.id));
       image._flurbArtworkMissing = () => {
         const next = candidates.shift();
         if (next) registerTrackArtwork(image, next);
@@ -1102,8 +1152,9 @@
     state.listObserver?.disconnect();
     state.artworkObserver?.disconnect();
     state.artworkElements.clear();
+    state.recentArtworkElements.clear();
     els.tableBody.replaceChildren();
-    const showAlbumGrid = Boolean(state.cloudSnapshot && state.viewMode === "recent" && state.folderPath === CATALOG_ROOT);
+    const showAlbumGrid = isRecentlyAddedGrid();
     els.trackList.classList.toggle("is-recent-albums", showAlbumGrid);
     els.emptyState.hidden = true;
     if (!state.cloud) {
@@ -1117,6 +1168,7 @@
     const query = els.search.value.trim().toLocaleLowerCase();
     if (showAlbumGrid) {
       const albums = recentAlbums(query);
+      requestAnimationFrame(pumpArtworkQueue);
       els.trackCount.textContent = `· ${albums.length} album${albums.length === 1 ? "" : "s"}`;
       if (!albums.length) {
         els.emptyState.hidden = false;
@@ -1740,6 +1792,7 @@
       if (navigator.mediaSession) navigator.mediaSession.metadata = null;
     }
     state.completedMetadata.clear();
+    state.recentArtworkPreload = null;
     for (const queued of state.artworkQueue.splice(0)) state.artworkLoading.delete(queued.id);
     for (const link of state.artworkLinks.values()) URL.revokeObjectURL(link);
     state.artworkLinks.clear();
@@ -1760,7 +1813,11 @@
     if (event.key === "flurb.turso.connection") loadCloudConfig();
     if (event.key === "flurb.dropbox.libraryFolder" || event.key === DROPBOX_SIGNED_OUT) refreshDropboxFolder();
   });
-  window.addEventListener("online", syncCloud);
+  window.addEventListener("online", () => {
+    syncCloud();
+    state.recentArtworkPreload = null;
+    pumpArtworkQueue();
+  });
   window.addEventListener("offline", syncCloud);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) syncCloud(); });
   setInterval(syncCloud, 5000);
