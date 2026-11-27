@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE = "flurb-shell-v21";
+const CACHE = "flurb-shell-v22";
 const FILES = ["./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js", "./artwork-cache.js", "./playback-queue.js", "./styles.css", "./favicon.png", "./apple-touch-icon.png"];
 const ICONS = "https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js";
 const scope = new URL(self.registration.scope);

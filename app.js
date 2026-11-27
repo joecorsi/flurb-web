@@ -2,6 +2,7 @@
   "use strict";
   const API = "https://api.dropboxapi.com/2";
   const CATALOG_ROOT = "/catalog";
+  const compareTrackNames = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
   const DROPBOX_SIGNED_OUT = "flurb.dropbox.signedOutAt";
   const readDropboxToken = () => localStorage.getItem(DROPBOX_SIGNED_OUT) ? ""
     : localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
@@ -842,7 +843,7 @@
     if (isCurrent()) await FlurbArtworkCache.put(key, cover, revision || null).catch(() => {});
   }
   function pumpArtworkQueue() {
-    while (state.activeArtworkDownloads < 2) {
+    while (!state.loadingTrack && state.activeArtworkDownloads < 2) {
       let track = state.artworkQueue.shift();
       const preload = !track;
       if (preload) {
@@ -1132,9 +1133,8 @@
   }
   function visibleTracks() {
     if (state.viewMode === "favorites") {
-      const compare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
       return [...state.favorites].map((id) => state.catalog.get(id)).sort((a, b) =>
-        compare(playerArtist(a), playerArtist(b)) || compare(trackTitle(a), trackTitle(b)));
+        compareTrackNames(playerArtist(a), playerArtist(b)) || compareTrackNames(trackTitle(a), trackTitle(b)));
     }
     if (state.viewMode === "recent") {
       const cutoff = recentCutoff();
@@ -1205,7 +1205,7 @@
   function albumTrackOrder(a, b) {
     return (Number(a.disc_number) || 1) - (Number(b.disc_number) || 1) ||
       trackNumber(a.track_number) - trackNumber(b.track_number) ||
-      trackTitle(a).localeCompare(trackTitle(b), undefined, { numeric: true, sensitivity: "base" });
+      compareTrackNames(trackTitle(a), trackTitle(b));
   }
   function catalogScroller() {
     return window.matchMedia("(max-width: 699px)").matches ? els.trackList : document.scrollingElement;
@@ -1343,9 +1343,9 @@
     const rows = [
       ...folders.map((item) => ({ kind: "folder", item })),
       ...tracks.map((item) => ({ kind: "track", item }))
-    ].sort((a, b) =>
-      (a.kind === "track" ? trackTitle(a.item) : a.item.name).localeCompare(
-        b.kind === "track" ? trackTitle(b.item) : b.item.name, undefined, { numeric: true, sensitivity: "base" }));
+    ].sort((a, b) => compareTrackNames(
+      a.kind === "track" ? trackTitle(a.item) : a.item.name,
+      b.kind === "track" ? trackTitle(b.item) : b.item.name));
     return atRoot ? groupRowsByLetter(rows, true) : rows;
   }
   function playlistRows(query) {
@@ -1725,6 +1725,14 @@
       if (track) playbackLink(track).pending.catch(() => {});
     }
   }
+  els.tableBody.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || event.button !== 0 || event.target.closest("button") ||
+        !state.token || !state.libraryFolder) return;
+    const row = event.target.closest(".track-row");
+    const track = state.catalog.get(row?.dataset.trackId);
+    if (track) playbackLink(track).pending.catch(() => {});
+  }, { passive: true });
+
   function playTrack(track) {
     startPlayback({ selected: track.id });
   }
@@ -1777,7 +1785,6 @@
         if (requestId === state.playRequest) return playAudioSource(track, entry, position);
       });
       const result = started.catch((error) => error);
-      prepareNextTrack();
       updatePlayerArtwork(track);
       queueTrackArtwork(track, true);
       setPlayerMetadata(track);
@@ -1802,6 +1809,7 @@
     } finally {
       if (requestId === state.playRequest) {
         state.loadingTrack = false;
+        pumpArtworkQueue();
         setPlayerMetadata(state.current);
         renderTracks();
       }
@@ -1822,7 +1830,7 @@
       await startAudio();
       if (requestId === state.playRequest) {
         hideNotice();
-        prepareNextTrack();
+        renderTracks();
       }
     } catch (error) {
       if (requestId !== state.playRequest) return;
@@ -1838,6 +1846,7 @@
     state.loadingTrack = false;
     els.audio.pause();
     state.bufferingAudio = false;
+    pumpArtworkQueue();
     if (state.current) setPlayerMetadata(state.current);
     updateTransport();
   }
@@ -2240,9 +2249,10 @@
   });
   els.audio.addEventListener("timeupdate", renderProgress);
   els.audio.addEventListener("loadedmetadata", renderProgress);
-  els.audio.addEventListener("play", () => { updateTransport(); renderTracks(); });
+  els.audio.addEventListener("play", updateTransport);
   els.audio.addEventListener("playing", () => {
     state.bufferingAudio = false;
+    prepareNextTrack();
     renderProgress();
     registerMediaSessionActions();
   });
