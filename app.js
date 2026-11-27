@@ -15,7 +15,7 @@
     if (window.lucide?.createIcons) window.lucide.createIcons({ root });
   }
   const els = {
-    audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"), shuffleLibrary: $("#shuffle-library"),
+    audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
     librarySticky: $("#library-sticky"), playerArtworkButton: $("#player-artwork-button"), playerArtwork: $("#player-artwork"), playerArtworkShell: $("#player-artwork-shell"),
     artworkViewer: $("#artwork-viewer"), artworkViewerImage: $("#artwork-viewer-image"), artworkViewerCover: $("#artwork-viewer-cover"),
     settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), nowTitleViewport: $("#now-title-viewport"), emptyGlyph: $(".empty-glyph"),
@@ -407,7 +407,6 @@
   const supportsArtwork = (track) => /\.(mp3|flac)$/i.test(track.name);
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
-    els.shuffleLibrary.hidden = state.viewMode !== "library" || state.folderPath !== CATALOG_ROOT || !state.catalog.size;
     const scroller = document.createElement("span");
     scroller.className = "breadcrumbs-path";
     els.breadcrumbs.append(scroller);
@@ -998,6 +997,7 @@
     updateFavoriteButton();
     renderBreadcrumbs();
     renderTracks(scrollSearch);
+    schedulePlaybackWarmup();
   }
 
   function loadLibraryFolder(path = CATALOG_ROOT) {
@@ -1089,7 +1089,6 @@
     state.activePlaylistId = null;
     state.recentGridReturn = null;
     state.playback = null;
-    updateLibraryShuffleButton();
     hideNotice();
     state.catalog = new Map();
     state.catalogFolders = new Map();
@@ -1658,28 +1657,45 @@
   function playbackContext() {
     return JSON.stringify([state.viewMode, state.folderPath, state.activePlaylistId, els.search.value.trim().toLocaleLowerCase()]);
   }
-  function contextTracks() {
+  function* contextTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
     if (isRecentlyAddedGrid()) {
       const cutoff = recentCutoff();
-      return recentAlbums(query).flatMap((album) => album.tracks
-        .filter((track) => addedDate(track) >= cutoff).sort(albumTrackOrder));
+      for (const album of recentAlbums(query)) {
+        yield* album.tracks.filter((track) => addedDate(track) >= cutoff).sort(albumTrackOrder);
+      }
+    } else if (state.viewMode === "playlists" && !state.activePlaylistId) {
+      const seen = new Set();
+      for (const { item } of playlistRows(query)) {
+        for (const track of item?.tracks || []) {
+          if (seen.has(track.id)) continue;
+          seen.add(track.id);
+          yield track;
+        }
+      }
+    } else if (state.viewMode === "library") {
+      function* collect(folders, tracks, atRoot = false) {
+        for (const { kind, item } of libraryRows(folders, tracks, atRoot)) {
+          if (kind === "track") yield item;
+          else if (kind === "folder") yield* collect(item.folders, item.tracks);
+        }
+      }
+      yield* collect(state.entries.filter((folder) => folder.name.toLocaleLowerCase().includes(query)),
+        filteredTracks(), state.folderPath === CATALOG_ROOT);
+    } else {
+      yield* filteredTracks();
     }
-    if (state.viewMode === "playlists" && !state.activePlaylistId) {
-      const tracks = playlistRows(query).flatMap((row) => row.item?.tracks || []);
-      return [...new Map(tracks.map((track) => [track.id, track])).values()];
-    }
-    if (state.viewMode !== "library") return filteredTracks();
-    function collect(folders, tracks, atRoot = false) {
-      return libraryRows(folders, tracks, atRoot).flatMap(({ kind, item }) => {
-        if (kind === "track") return [item];
-        if (kind !== "folder") return [];
-        const folder = state.catalogFolders.get(item.path_lower);
-        return folder ? collect(folder.folders, folder.tracks) : [];
-      });
-    }
-    return collect(state.entries.filter((folder) => folder.name.toLocaleLowerCase().includes(query)),
-      filteredTracks(), state.folderPath === CATALOG_ROOT);
+  }
+  let warmPlaybackTimer;
+  function schedulePlaybackWarmup() {
+    clearTimeout(warmPlaybackTimer);
+    warmPlaybackTimer = setTimeout(() => {
+      if (!state.cloudSnapshot || !state.token || !state.libraryFolder || state.shuffle ||
+          state.loadingTrack || !els.audio.paused ||
+          (state.playback?.context === playbackContext() && !state.playback.finished)) return;
+      const track = contextTracks().next().value;
+      if (track) playbackLink(track).pending.catch(() => {});
+    }, 200);
   }
   function playbackLink(track, refresh = false) {
     const path = dropboxTrackPath(track);
@@ -1712,15 +1728,13 @@
   function playTrack(track) {
     startPlayback({ selected: track.id });
   }
-  function startPlayback({ selected = null, wholeLibrary = false } = {}) {
+  function startPlayback({ selected = null } = {}) {
     if (!state.token || !state.libraryFolder) return openSettings();
-    const tracks = wholeLibrary ? [...state.catalog.values()] : contextTracks();
+    const tracks = Array.from(contextTracks(), (track) => track.id);
     if (!tracks.length) return toast("No playable tracks in this view");
-    const queue = FlurbPlayback.create(tracks.map((track) => track.id), { start: selected, shuffle: state.shuffle });
+    const queue = FlurbPlayback.create(tracks, { start: selected, shuffle: state.shuffle });
     queue.context = playbackContext();
-    queue.wholeLibrary = wholeLibrary;
     state.playback = queue;
-    updateLibraryShuffleButton();
     return playQueuedTrack();
   }
   async function startAudio() {
@@ -1743,8 +1757,9 @@
     state.audioTrackId = track.id;
     state.audioLinkExpires = entry.expires;
     if (position > 0) els.audio.currentTime = position;
+    const started = startAudio();
     renderProgress();
-    return startAudio();
+    return started;
   }
   async function playQueuedTrack({ position = 0, refreshLink = false } = {}) {
     const track = state.catalog.get(FlurbPlayback.current(state.playback));
@@ -1768,7 +1783,7 @@
       setPlayerMetadata(track);
       els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
       updateFavoriteButton();
-      renderTracks();
+      updateTransport();
       const error = await result;
       if (requestId !== state.playRequest) return;
       if (error) {
@@ -1833,16 +1848,7 @@
     els.shuffle.classList.toggle("active", enabled);
     els.shuffle.setAttribute("aria-label", `Shuffle ${enabled ? "on" : "off"}`);
     els.shuffle.setAttribute("aria-pressed", String(enabled));
-    updateLibraryShuffleButton();
-  }
-  function updateLibraryShuffleButton() {
-    els.shuffleLibrary.setAttribute("aria-pressed", String(Boolean(state.shuffle && state.playback?.wholeLibrary && !state.playback.finished)));
-  }
-  function shuffleLibrary() {
-    if (!els.shuffleLibrary.hidden) {
-      setShuffle(true);
-      startPlayback({ wholeLibrary: true });
-    }
+    schedulePlaybackWarmup();
   }
   function playNext(direction = 1) {
     const queue = state.playback;
@@ -1850,7 +1856,6 @@
     for (let remaining = queue.tracks.length; remaining > 0; remaining -= 1) {
       if (!FlurbPlayback.step(queue, direction, state.repeat === "all")) return false;
       if (state.catalog.has(FlurbPlayback.current(queue))) {
-        updateLibraryShuffleButton();
         playQueuedTrack();
         return true;
       }
@@ -1977,6 +1982,7 @@
       ? els.trackList : document.scrollingElement;
     els.clearSearch.disabled = !els.search.value;
     syncSearchState();
+    schedulePlaybackWarmup();
     if (searching) {
       state.searchScroll ??= { top: scroller.scrollTop, limit: state.displayLimit };
       state.displayLimit = 100;
@@ -2160,7 +2166,6 @@
       els.nowTitle.textContent = "Nothing playing yet";
       els.nowAlbum.textContent = "";
       updateTitleMarquee();
-      updateLibraryShuffleButton();
       updateFavoriteButton();
       updateTransport();
       if (navigator.mediaSession) navigator.mediaSession.metadata = null;
@@ -2213,7 +2218,6 @@
   });
   els.previous.addEventListener("click", playPrevious);
   els.next.addEventListener("click", () => playNext(1));
-  els.shuffleLibrary.addEventListener("click", () => shuffleLibrary());
   els.shuffle.addEventListener("click", () => {
     setShuffle(!state.shuffle);
     toast(`Shuffle ${state.shuffle ? "on" : "off"}`);
@@ -2235,7 +2239,7 @@
     if (Number.isFinite(els.audio.duration)) els.audio.currentTime = (Number(els.progress.value) / 100) * els.audio.duration;
   });
   els.audio.addEventListener("timeupdate", renderProgress);
-  els.audio.addEventListener("loadedmetadata", () => { renderProgress(); renderTracks(); });
+  els.audio.addEventListener("loadedmetadata", renderProgress);
   els.audio.addEventListener("play", () => { updateTransport(); renderTracks(); });
   els.audio.addEventListener("playing", () => {
     state.bufferingAudio = false;
@@ -2252,7 +2256,6 @@
     if (!state.playback || state.repeat === "one" || state.audioTrackId !== state.current?.id) return;
     if (!playNext()) {
       state.playback.finished = true;
-      updateLibraryShuffleButton();
       renderTracks();
     }
   });

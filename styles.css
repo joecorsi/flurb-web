@@ -1265,19 +1265,6 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 
 .breadcrumb-row { display: flex; align-items: center; gap: var(--top-control-gap); }
 .breadcrumb-row .breadcrumbs { flex: 1 1 0; }
-.shuffle-library {
-  flex: 0 0 auto;
-  height: 20px;
-  padding: 0 6px;
-  border: 1px solid #fff;
-  border-radius: 2px;
-  color: #fff;
-  background: transparent;
-  font: 500 .62rem/1 var(--mono);
-  cursor: pointer;
-}
-.shuffle-library[aria-pressed="true"] { color: #000; background: #fff; }
-.shuffle-library:disabled { cursor: wait; }
 .track-artwork-shell.playing-speaker .artwork-placeholder { color: #fff; }
 
 :root { --player-surface: #1c1e20; }

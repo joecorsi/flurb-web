@@ -7,14 +7,15 @@
   <meta name="description" content="A simple music player for tracks in your Dropbox.">
   <meta name="apple-mobile-web-app-title" content="flurb">
   <title>flurb</title>
+  <link rel="preconnect" href="https://api.dropboxapi.com" crossorigin>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=row-selection-1">
+  <link rel="stylesheet" href="./styles.css?v=playback-start-1">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu" crossorigin="anonymous" defer></script>
   <script src="./turso-sync.js?v=turso-details-1" defer></script>
   <script src="./artwork-cache.js?v=1" defer></script>
   <script src="./playback-queue.js?v=1" defer></script>
-  <script src="./app.js?v=album-navigation-1" defer></script>
+  <script src="./app.js?v=playback-start-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -39,7 +40,6 @@
           </div>
           <div class="breadcrumb-row">
             <nav class="breadcrumbs" id="breadcrumbs" aria-label="Music library location"></nav>
-            <button class="shuffle-library" id="shuffle-library" type="button" aria-pressed="false" hidden>shuffle lib</button>
           </div>
         </div>
         <h2 class="sr-only" id="library-heading">Music library</h2>
