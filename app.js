@@ -1539,9 +1539,10 @@
       : result === "unavailable" ? "This track or playlist is no longer available." : "Could not add this track. Try again.";
   }
   function showAlbumInLibrary(track) {
-    if (!state.catalog.has(track.id)) return;
+    const catalogTrack = state.catalog.get(track.id);
+    if (!catalogTrack) return;
     const origin = captureView();
-    const path = albumPath(state.catalog.get(track.id));
+    const path = compilationAlbumPath(catalogTrack) || albumPath(catalogTrack);
     history.replaceState({ ...history.state, flurbView: origin }, "", location.href);
     restoreView({ view: "library", path, playlistId: null, recentGridReturn: null, query: "", searchScroll: null, limit: 100, top: 0 });
     history.pushState({ flurbView: captureView() }, "", location.href);
