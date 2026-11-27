@@ -11,11 +11,12 @@
   }
 
   function create(tracks, { start = null, shuffle = false } = {}) {
-    const selected = tracks.includes(start) ? start : null;
+    const startIndex = start == null ? -1 : tracks.indexOf(start);
+    const selected = startIndex < 0 ? null : start;
     const order = shuffle
       ? [...(selected ? [selected] : []), ...shuffled(tracks.filter((id) => id !== selected))]
-      : tracks.slice();
-    const position = shuffle || !selected ? 0 : order.indexOf(selected);
+      : tracks;
+    const position = shuffle || !selected ? 0 : startIndex;
     return {
       tracks, order, position, shuffle, finished: false, nextCycle: null,
       visited: new Set(order.length ? [order[position]] : [])

@@ -18,13 +18,35 @@
     return database;
   }
 
-  async function get(key) {
-    const db = await openDatabase();
-    return new Promise((resolve, reject) => {
-      const request = db.transaction("covers").objectStore("covers").get(key);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+  // Visible tiles often request several covers together. Share one read transaction
+  // and one lookup per distinct key, without retaining blobs after the reads finish.
+  let reads = new Map();
+  async function flushReads() {
+    const batch = reads;
+    reads = new Map();
+    try {
+      const db = await openDatabase();
+      const store = db.transaction("covers").objectStore("covers");
+      for (const [key, entry] of batch) {
+        const request = store.get(key);
+        request.onsuccess = () => entry.resolve(request.result);
+        request.onerror = () => entry.reject(request.error);
+      }
+    } catch (error) {
+      for (const entry of batch.values()) entry.reject(error);
+    }
+  }
+  function get(key) {
+    if (!reads.size) queueMicrotask(flushReads);
+    if (!reads.has(key)) {
+      const entry = {};
+      entry.promise = new Promise((resolve, reject) => {
+        entry.resolve = resolve;
+        entry.reject = reject;
+      });
+      reads.set(key, entry);
+    }
+    return reads.get(key).promise;
   }
 
   async function put(key, cover, revision) {

@@ -1,16 +1,12 @@
 "use strict";
 
-const CACHE = "flurb-shell-v23";
+const CACHE = "flurb-shell-v24";
 const FILES = ["./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js", "./artwork-cache.js", "./offline-audio.js", "./playback-queue.js", "./styles.css", "./favicon.png", "./apple-touch-icon.png"];
-const ICONS = "https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js";
 const scope = new URL(self.registration.scope);
 const paths = new Set(FILES.map((file) => new URL(file, scope).pathname));
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then(async (cache) => {
-    await cache.addAll(FILES);
-    try { await cache.add(new Request(ICONS, { mode: "cors" })); } catch (_) {}
-  }));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES)));
 });
 
 self.addEventListener("activate", (event) => {
@@ -22,7 +18,7 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.href !== ICONS && (url.origin !== scope.origin || (!paths.has(url.pathname) && url.pathname !== scope.pathname))) return;
+  if (url.origin !== scope.origin || (!paths.has(url.pathname) && url.pathname !== scope.pathname)) return;
   const fallback = url.pathname === scope.pathname ? new URL("./index.html", scope) : url;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
@@ -32,7 +28,7 @@ self.addEventListener("fetch", (event) => {
         // Store the shell route without query parameters, including OAuth callbacks.
         const key = new URL(fallback);
         key.search = "";
-        await cache.put(key, response.clone()).catch(() => {});
+        event.waitUntil(cache.put(key, response.clone()).catch(() => {}));
       }
       return response;
     } catch (error) {

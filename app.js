@@ -12,8 +12,46 @@
   const APPLE_EPOCH_OFFSET = 978307200;
   const appleTimestamp = () => Date.now() / 1000 - APPLE_EPOCH_OFFSET;
   const $ = (selector) => document.querySelector(selector);
+  // Lucide 0.468.0, distributed under LICENSE-lucide. Clone only new placeholders.
+  const iconMarkup = {
+    "chevron-down": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"></path></svg>",
+    "clock-3": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><polyline points=\"12 6 12 12 16.5 12\"></polyline></svg>",
+    "disc-3": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M6 12c0-1.7.7-3.2 1.8-4.2\"></path><circle cx=\"12\" cy=\"12\" r=\"2\"></circle><path d=\"M18 12c0 1.7-.7 3.2-1.8 4.2\"></path></svg>",
+    "ellipsis": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"1\"></circle><circle cx=\"19\" cy=\"12\" r=\"1\"></circle><circle cx=\"5\" cy=\"12\" r=\"1\"></circle></svg>",
+    "folder": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path></svg>",
+    "heart": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"></path></svg>",
+    "house": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"></path><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"></path></svg>",
+    "library": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m16 6 4 14\"></path><path d=\"M12 6v14\"></path><path d=\"M8 8v12\"></path><path d=\"M4 4v16\"></path></svg>",
+    "list-music": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15V6\"></path><path d=\"M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z\"></path><path d=\"M12 12H3\"></path><path d=\"M16 6H3\"></path><path d=\"M12 18H3\"></path></svg>",
+    "loader-circle": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12a9 9 0 1 1-6.219-8.56\"></path></svg>",
+    "music-2": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"18\" r=\"4\"></circle><path d=\"M12 18V2l7 4\"></path></svg>",
+    "pause": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"14\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\"></rect><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\"></rect></svg>",
+    "play": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"6 3 20 12 6 21 6 3\"></polygon></svg>",
+    "repeat": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m17 2 4 4-4 4\"></path><path d=\"M3 11v-1a4 4 0 0 1 4-4h14\"></path><path d=\"m7 22-4-4 4-4\"></path><path d=\"M21 13v1a4 4 0 0 1-4 4H3\"></path></svg>",
+    "repeat-1": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m17 2 4 4-4 4\"></path><path d=\"M3 11v-1a4 4 0 0 1 4-4h14\"></path><path d=\"m7 22-4-4 4-4\"></path><path d=\"M21 13v1a4 4 0 0 1-4 4H3\"></path><path d=\"M11 10h1v4\"></path></svg>",
+    "search": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path></svg>",
+    "settings": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"></path><circle cx=\"12\" cy=\"12\" r=\"3\"></circle></svg>",
+    "shuffle": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m18 14 4 4-4 4\"></path><path d=\"m18 2 4 4-4 4\"></path><path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\"></path><path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\"></path><path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\"></path></svg>",
+    "skip-back": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"19 20 9 12 19 4 19 20\"></polygon><line x1=\"5\" x2=\"5\" y1=\"19\" y2=\"5\"></line></svg>",
+    "skip-forward": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"5 4 15 12 5 20 5 4\"></polygon><line x1=\"19\" x2=\"19\" y1=\"5\" y2=\"19\"></line></svg>",
+    "sparkles": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z\"></path><path d=\"M20 3v4\"></path><path d=\"M22 5h-4\"></path><path d=\"M4 17v2\"></path><path d=\"M5 18H3\"></path></svg>",
+    "volume-2": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z\"></path><path d=\"M16 9a5 5 0 0 1 0 6\"></path><path d=\"M19.364 18.364a9 9 0 0 0 0-12.728\"></path></svg>",
+    "x": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"></path><path d=\"m6 6 12 12\"></path></svg>"
+  };
+  const iconTemplates = new Map();
   function renderLucideIcons(root = document) {
-    if (window.lucide?.createIcons) window.lucide.createIcons({ root });
+    for (const placeholder of root.querySelectorAll("i[data-lucide]")) {
+      const name = placeholder.dataset.lucide;
+      if (!iconTemplates.has(name)) {
+        const template = document.createElement("template");
+        template.innerHTML = iconMarkup[name];
+        iconTemplates.set(name, template.content.firstElementChild);
+      }
+      const icon = iconTemplates.get(name).cloneNode(true);
+      for (const { name, value } of placeholder.attributes) icon.setAttribute(name, value);
+      icon.classList.add("lucide", "lucide-" + name);
+      placeholder.replaceWith(icon);
+    }
   }
   const els = {
     audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
@@ -160,6 +198,7 @@
   async function fetchTrackFile(track, range = null, retried = false, path = dropboxTrackPath(track), signal) {
     const accessToken = await ensureAccessToken();
     const response = await fetch("https://content.dropboxapi.com/2/files/download", {
+      priority: "low",
       method: range ? "GET" : "POST",
       signal,
       headers: {
@@ -180,6 +219,7 @@
   async function dropbox(path, body = {}, retried = false) {
     const accessToken = await ensureAccessToken();
     const response = await fetch(`${API}${path}`, {
+      priority: path === "/files/get_temporary_link" ? "high" : "auto",
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -476,9 +516,12 @@
     }
   }
   function openSettings() {
+    const frame = $("#settings-frame");
+    if (!frame.hasAttribute("src")) frame.src = frame.dataset.src;
     els.settingsOverlay.hidden = false;
     els.settingsClose.focus();
     sendCloudStatus();
+    sendOfflineStatus();
   }
   function closeSettings() {
     els.settingsOverlay.hidden = true;
@@ -738,7 +781,7 @@
     const preload = state.recentArtworkPreload;
     while (preload.index < albums.length) {
       const album = albums[preload.index];
-      preload.candidates ??= artworkCandidates(album);
+      preload.candidates ??= artworkCandidates(album).slice();
       if (!album.tracks.some((track) => state.artworkLinks.has(track.id))) {
         while (preload.candidates.length) {
           const track = preload.candidates[0];
@@ -772,8 +815,10 @@
         image.removeAttribute("src");
         image.classList.remove("has-artwork");
         image.parentElement?.classList.remove("has-artwork");
-        bound?.delete(image);
-        image._flurbArtworkMissing?.();
+        if (image._flurbArtworkMissing) {
+          bound?.delete(image);
+          image._flurbArtworkMissing();
+        }
       }
     }
     if (state.current?.id === track.id) {
@@ -879,7 +924,10 @@
       if (rect.height && rect.bottom > Math.max(0, list.top) && rect.top < Math.min(innerHeight, list.bottom)) ids.add(id);
     };
     for (const [id, images] of state.artworkElements) for (const image of images) collect(image, id);
-    for (const image of state.recentArtworkElements.values()) collect(image, image._flurbArtworkId);
+    for (const image of state.recentArtworkElements.values()) {
+      if (image._flurbArtworkId) collect(image, image._flurbArtworkId);
+      else for (const track of image._flurbArtworkCandidates) collect(image, track.id);
+    }
     for (const id of ids) {
       if (!id || (!force && (state.artworkLoading.has(id) || !artworkCheckDue(id)))) continue;
       queueTrackArtwork(state.catalog.get(id), false, true);
@@ -934,6 +982,7 @@
     }
   }
   function sendOfflineStatus() {
+    if (els.settingsOverlay.hidden) return;
     $("#settings-frame").contentWindow?.postMessage({ type: "flurb-offline-audio-status", ...offlineStatus }, location.origin);
   }
   function setOfflineStatus(phase, total, track) {
@@ -1144,6 +1193,7 @@
   }
 
   function sendCloudStatus() {
+    if (els.settingsOverlay.hidden) return;
     $("#settings-frame").contentWindow?.postMessage({
       type: "flurb-turso-status",
       config: state.cloud,
@@ -1259,10 +1309,19 @@
       return false;
     }
   }
+  let filteredView;
   function filteredTracks() {
+    const context = playbackContext();
+    const cutoff = state.viewMode === "recent" ? recentCutoff() : null;
+    if (filteredView?.catalog === state.catalog && filteredView.context === context && filteredView.cutoff === cutoff) {
+      return filteredView.tracks;
+    }
     const query = els.search.value.trim().toLocaleLowerCase();
-    return visibleTracks().filter((track) => !query ||
-      [trackTitle(track), track.name, playerArtist(track)].some((name) => name.toLocaleLowerCase().includes(query)));
+    const visible = visibleTracks();
+    const tracks = query ? visible.filter((track) =>
+      [trackTitle(track), track.name, playerArtist(track)].some((name) => name.toLocaleLowerCase().includes(query))) : visible;
+    filteredView = { catalog: state.catalog, context, cutoff, tracks };
+    return tracks;
   }
   function visibleTracks() {
     if (state.viewMode === "favorites") {
@@ -1377,7 +1436,7 @@
     return `${CATALOG_ROOT}/@untagged-${encodeURIComponent(track.id)}`;
   }
   function artworkCandidates(album) {
-    return album.tracks.filter(supportsArtwork).sort(albumTrackOrder).slice(0, 3);
+    return album.artworkCandidates ??= album.tracks.filter(supportsArtwork).sort(albumTrackOrder).slice(0, 3);
   }
   function buildRecentAlbums() {
     const albums = new Map();
@@ -1458,7 +1517,7 @@
     image._flurbArtworkMissing();
     return item;
   }
-  function observeMoreRows(count) {
+  function observeMoreRows(count, appendPage) {
     if (count <= state.displayLimit) return;
     const row = document.createElement("div");
     row.className = "list-sentinel";
@@ -1466,9 +1525,13 @@
     els.tableBody.append(row);
     state.listObserver = new IntersectionObserver((items) => {
       if (!items.some((item) => item.isIntersecting)) return;
-      state.listObserver?.disconnect();
+      if (!row.isConnected) return;
+      state.listObserver.disconnect();
+      row.remove();
+      const start = state.displayLimit;
       state.displayLimit += 100;
-      renderTracks(false);
+      appendPage(start);
+      observeMoreRows(count, appendPage);
     }, { rootMargin: "500px 0px" });
     state.listObserver.observe(row);
   }
@@ -1515,8 +1578,11 @@
         els.emptyState.querySelector("p").textContent = query ? "No results" : "No albums";
         return;
       }
-      for (const album of albums.slice(0, state.displayLimit)) els.tableBody.append(makeRecentAlbumTile(album));
-      observeMoreRows(albums.length);
+      const appendAlbums = (start) => {
+        for (const album of albums.slice(start, state.displayLimit)) els.tableBody.append(makeRecentAlbumTile(album));
+      };
+      appendAlbums(0);
+      observeMoreRows(albums.length, appendAlbums);
       return;
     }
     const tracks = filteredTracks();
@@ -1544,6 +1610,7 @@
       ? libraryRows(folders, tracks, atViewRoot)
       : tracks.map((item) => ({ kind: "track", item }));
 
+    if (state.viewMode === "library" && !atViewRoot && !folders.length) filteredView.libraryRows = rows;
     if (!rows.length) {
       els.emptyState.hidden = false;
       els.emptyState.querySelector("p").textContent = query ? "No results" : state.viewMode === "favorites" ? "No favorites" : state.viewMode === "playlists" ? "This playlist is empty" : "No tracks";
@@ -1552,12 +1619,18 @@
     }
     const searchHeaderIndex = rows.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
     if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 1;
-    rows.slice(0, state.displayLimit).forEach(({ kind, item, letter }, index) => {
-      if (kind === "letter") els.tableBody.append(makeLibraryLetterRow(letter));
-      else els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
-    });
-    renderLucideIcons(els.tableBody);
-    observeMoreRows(rows.length);
+    const appendRows = (start) => {
+      const fragment = document.createDocumentFragment();
+      rows.slice(start, state.displayLimit).forEach(({ kind, item, letter }, offset) => {
+        const index = start + offset;
+        fragment.append(kind === "letter" ? makeLibraryLetterRow(letter)
+          : kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
+      });
+      renderLucideIcons(fragment);
+      els.tableBody.append(fragment);
+    };
+    appendRows(0);
+    observeMoreRows(rows.length, appendRows);
     if (scrollSearch && query && atViewRoot) scrollToSearchLetter();
   }
   function playlistModified(id, now) {
@@ -1794,6 +1867,39 @@
     });
     return row;
   }
+  function updatePlayingRows() {
+    updateTransport();
+    const current = state.current?.id;
+    const selector = current ? '.track-row.is-playing, .track-row[data-track-id="' + CSS.escape(current) + '"]' : ".track-row.is-playing";
+    for (const row of els.tableBody.querySelectorAll(selector)) {
+      const track = state.catalog.get(row.dataset.trackId);
+      if (!track) continue;
+      const selected = track.id === current;
+      const playing = selected && !els.audio.paused && !els.audio.ended;
+      row.classList.toggle("is-playing", selected);
+      const shell = row.querySelector(".track-artwork-shell");
+      if (shell.classList.contains("playing-speaker") === playing) continue;
+      const oldImage = shell.querySelector("img");
+      if (oldImage) {
+        state.artworkObserver?.unobserve(oldImage);
+        state.artworkElements.get(track.id)?.delete(oldImage);
+      }
+      shell.className = "track-artwork-shell";
+      shell.classList.toggle("playing-speaker", playing);
+      shell.innerHTML = '<i class="artwork-placeholder" aria-hidden="true"></i>';
+      shell.firstElementChild.dataset.lucide = playing ? "volume-2" : "music-2";
+      if (!playing) {
+        const image = document.createElement("img");
+        image.className = "track-artwork";
+        image.alt = "";
+        image.width = image.height = 44;
+        shell.prepend(image);
+        registerTrackArtwork(image, track);
+      }
+      renderLucideIcons(shell);
+      updateTrackRowTitle(row, track);
+    }
+  }
   function playbackContext() {
     return JSON.stringify([state.viewMode, state.folderPath, state.activePlaylistId, els.search.value.trim().toLocaleLowerCase()]);
   }
@@ -1837,6 +1943,16 @@
       if (track) playbackLink(track).pending.catch(() => {});
     }, 200);
   }
+  let streamConnection;
+  function preconnectStream(link) {
+    const url = new URL(link, location.href);
+    if (url.protocol !== "https:" || streamConnection?.href === url.origin + "/") return;
+    streamConnection?.remove();
+    streamConnection = document.createElement("link");
+    streamConnection.rel = "preconnect";
+    streamConnection.href = url.origin;
+    document.head.append(streamConnection);
+  }
   function playbackLink(track, refresh = false) {
     const path = dropboxTrackPath(track);
     const localKey = offlineTrackKey(track);
@@ -1853,6 +1969,7 @@
       }
       if (!navigator.onLine) throw new Error("This track hasn’t been saved for offline playback.");
       entry.link = (await dropbox("/files/get_temporary_link", { path })).link;
+      if (!state.loadingTrack) preconnectStream(entry.link);
     })().catch((error) => {
       if (links.get(key) === entry) links.delete(key);
       throw error;
@@ -1880,6 +1997,17 @@
     if (track) playbackLink(track).pending.catch(() => {});
   }, { passive: true });
 
+  let hoverWarmup;
+  els.tableBody.addEventListener("pointerover", (event) => {
+    const row = event.target.closest(".track-row");
+    if (event.pointerType !== "mouse" || !row || row.contains(event.relatedTarget)) return;
+    clearTimeout(hoverWarmup);
+    hoverWarmup = setTimeout(() => {
+      const track = state.catalog.get(row.dataset.trackId);
+      if (row.matches(":hover") && track && state.token && state.libraryFolder &&
+          !state.loadingTrack && !navigator.connection?.saveData) playbackLink(track).pending.catch(() => {});
+    }, 100);
+  });
   function playTrack(track) {
     startPlayback({ selected: track.id });
   }
@@ -1888,9 +2016,20 @@
     if (selected && !navigator.onLine && !isSavedOffline(state.catalog.get(selected))) {
       return toast("This track hasn’t been saved for offline playback");
     }
-    const tracks = [];
-    for (const track of contextTracks()) {
-      if (navigator.onLine || isSavedOffline(track)) tracks.push(track.id);
+
+    const listView = !isRecentlyAddedGrid() && state.viewMode !== "library" &&
+      (state.viewMode !== "playlists" || state.activePlaylistId);
+    let tracks;
+    const visible = listView || state.viewMode === "library" ? filteredTracks() : null;
+    if (navigator.onLine && state.viewMode === "library" && filteredView.libraryRows) {
+      tracks = filteredView.ids ??= filteredView.libraryRows.map(({ item }) => item.id);
+    } else if (listView && navigator.onLine) {
+      tracks = filteredView.ids ??= visible.map((track) => track.id);
+    } else {
+      tracks = [];
+      for (const track of contextTracks()) {
+        if (navigator.onLine || isSavedOffline(track)) tracks.push(track.id);
+      }
     }
     if (!tracks.length) return toast(navigator.onLine ? "No playable tracks in this view" : "No saved tracks in this view");
     const queue = FlurbPlayback.create(tracks, { start: selected, shuffle: state.shuffle });
@@ -1933,7 +2072,6 @@
     state.current = track;
     state.bufferingAudio = true;
     state.playbackPosition = position;
-    renderProgress();
     try {
       const entry = playbackLink(track, refreshLink);
       // Use the prepared link on the ended callback's call stack.
@@ -1941,7 +2079,16 @@
         if (requestId === state.playRequest) return playAudioSource(track, entry, position);
       });
       const result = started.catch((error) => error);
+      if (!entry.link && !entry.blob) renderProgress();
       updatePlayerArtwork(track);
+      if (!state.artworkLinks.has(track.id) && supportsArtwork(track)) {
+        const folder = state.libraryFolder;
+        const key = artworkCacheKey(folder, dropboxTrackPath(track));
+        FlurbArtworkCache.get(key).then((record) => {
+          if (record?.cover && state.current?.id === track.id && artworkTrackIsCurrent(track, folder) &&
+              !state.completedMetadata.has(track.id) && !state.artworkLinks.has(track.id)) publishArtwork(track, record.cover);
+        }).catch(() => {});
+      }
       queueTrackArtwork(track, true);
       setPlayerMetadata(track);
       els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
@@ -1967,7 +2114,7 @@
         state.loadingTrack = false;
         pumpArtworkQueue();
         setPlayerMetadata(state.current);
-        renderTracks();
+        updatePlayingRows();
       }
     }
   }
@@ -1986,7 +2133,7 @@
       await startAudio();
       if (requestId === state.playRequest) {
         hideNotice();
-        renderTracks();
+        updatePlayingRows();
       }
     } catch (error) {
       if (requestId !== state.playRequest) return;
@@ -2197,7 +2344,7 @@
       event.stopImmediatePropagation();
       return;
     }
-    const openTrackMenus = [...document.querySelectorAll(".track-overflow-menu")].filter((menu) => !menu.hidden);
+    const openTrackMenus = document.querySelectorAll(".track-overflow-menu:not([hidden])");
     if (openTrackMenus.length && !event.target.closest(".track-overflow")) {
       const tappedTrack = event.target.closest(".track-row");
       openTrackMenus.forEach((menu) => { menu.hidden = true; });
@@ -2432,12 +2579,12 @@
     if (els.audio.paused && !state.loadingTrack) state.bufferingAudio = false;
     renderProgress();
   });
-  els.audio.addEventListener("pause", () => { updateTransport(); renderTracks(); });
+  els.audio.addEventListener("pause", updatePlayingRows);
   els.audio.addEventListener("ended", () => {
     if (!state.playback || state.repeat === "one" || state.audioTrackId !== state.current?.id) return;
     if (!playNext()) {
       state.playback.finished = true;
-      renderTracks();
+      updatePlayingRows();
     }
   });
   els.audio.addEventListener("error", () => {
