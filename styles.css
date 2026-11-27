@@ -1331,3 +1331,62 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .player .transport button:focus-visible,
 .player #now-favorite:focus-visible { outline: 1px solid #fff !important; outline-offset: -2px; }
 .transport { grid-area: transport; }
+
+
+/* Keep notices and transport buttons clear of the player and tap highlights. */
+@media (max-width: 699px) {
+  .notice.error {
+    top: auto !important;
+    bottom: calc(var(--visual-viewport-bottom, 0px) + var(--player-height, 150px) + 10px);
+  }
+  body.is-keyboard-open .notice.error {
+    bottom: calc(var(--visual-viewport-bottom, 0px) + 10px);
+  }
+}
+.player #shuffle-button,
+.player #previous-button,
+.player #next-button,
+.player #repeat-button,
+.player #shuffle-button:hover,
+.player #previous-button:hover,
+.player #next-button:hover,
+.player #repeat-button:hover,
+.player #shuffle-button:active,
+.player #previous-button:active,
+.player #next-button:active,
+.player #repeat-button:active,
+.player #shuffle-button:focus,
+.player #previous-button:focus,
+.player #next-button:focus,
+.player #repeat-button:focus,
+.player #shuffle-button:focus-visible,
+.player #previous-button:focus-visible,
+.player #next-button:focus-visible,
+.player #repeat-button:focus-visible {
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  -webkit-tap-highlight-color: transparent;
+}
+.player #shuffle-button,
+.player #repeat-button { color: #74767a !important; }
+.player #shuffle-button.active,
+.player #repeat-button.active { color: #a54fff !important; }
+.player #shuffle-button:active:not(:disabled),
+.player #previous-button:active:not(:disabled),
+.player #next-button:active:not(:disabled),
+.player #repeat-button:active:not(:disabled) { color: #fff !important; }
+.player #now-favorite,
+.player #now-favorite:hover:not(:disabled),
+.player #now-favorite:active,
+.player #now-favorite:focus,
+.player #now-favorite:focus-visible {
+  color: #a54fff !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  -webkit-tap-highlight-color: transparent;
+}
