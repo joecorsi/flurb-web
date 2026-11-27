@@ -419,7 +419,7 @@
   function updateQuickActions() {
     const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
     els.viewLabel.textContent = state.viewMode === "recent" ? "Recently added" : state.viewMode === "favorites" ? "Favorites" : state.viewMode === "playlists" ? "Playlists" : "Library";
-    els.recentCount.textContent = String(recentAlbums("").length);
+    els.recentCount.textContent = String(recentAlbumWindow().trackCount);
     els.libraryCount.textContent = String(state.catalog.size);
     els.favoritesCount.textContent = String(state.favorites.size);
     els.playlistsCount.textContent = String(state.playlists.length);
@@ -1455,19 +1455,28 @@
     }
     return [...albums.values()].sort((a, b) => b.added - a.added || a.name.localeCompare(b.name));
   }
-  function recentAlbums(query) {
+  function recentAlbumWindow() {
     state.recentAlbumCache ??= buildRecentAlbums();
     const source = state.recentAlbumCache;
     const cutoff = recentCutoff();
     const previous = state.recentAlbumWindow;
     if (previous?.source !== source || previous.cutoff !== cutoff) {
       const albums = source.filter((album) => album.added >= cutoff);
+      let trackCount = 0;
+      for (const album of albums) {
+        for (const track of album.tracks) {
+          if (addedDate(track) >= cutoff) trackCount += 1;
+        }
+      }
       state.recentAlbumWindow = {
-        source, cutoff,
+        source, cutoff, trackCount,
         albums: previous?.source === source && albums.length === previous.albums.length ? previous.albums : albums
       };
     }
-    const albums = state.recentAlbumWindow.albums;
+    return state.recentAlbumWindow;
+  }
+  function recentAlbums(query) {
+    const { albums } = recentAlbumWindow();
     if (!query) return albums;
     return albums.filter((album) =>
       [album.name, album.artist, album.unknownAlbum ? "Unknown Album" : ""]
