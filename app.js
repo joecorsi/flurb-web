@@ -762,12 +762,6 @@
     requestAnimationFrame(() => {
       const target = [...els.tableBody.querySelectorAll(".library-letter-row")].find((row) => row.dataset.letter === first);
       if (!target) return;
-      if (document.body.classList.contains("is-searching")) {
-        const listRect = els.trackList.getBoundingClientRect();
-        const targetTop = target.getBoundingClientRect().top - listRect.top + els.trackList.scrollTop;
-        els.trackList.scrollTo({ top: targetTop, behavior: "smooth" });
-        return;
-      }
       const sticky = document.querySelector(".library-sticky");
       const offset = target.getBoundingClientRect().top - (sticky?.getBoundingClientRect().height || 0);
       window.scrollBy({ top: offset, behavior: "smooth" });
@@ -1082,7 +1076,15 @@
     els.nowFavorite.setAttribute("aria-label", active ? "Remove current track from favorites" : "Favorite current track");
   }
   function syncSearchState() {
-    document.body.classList.toggle("is-searching", document.activeElement === els.search || Boolean(els.search.value.trim()));
+    const searchFocused = document.activeElement === els.search;
+    document.body.classList.toggle("is-searching", Boolean(els.search.value.trim()));
+    const viewport = window.visualViewport;
+    const mobile = window.matchMedia("(max-width: 699px)").matches;
+    const keyboardOpen = Boolean(mobile && searchFocused && viewport && (
+      viewport.height < window.innerHeight - 120 ||
+      (window.screen?.height && window.screen.height - viewport.height > 180)
+    ));
+    document.body.classList.toggle("is-keyboard-open", keyboardOpen);
   }
   function toggleFavorite(track) {
     if (state.favorites.has(track.id)) {
@@ -1132,6 +1134,8 @@
   });
   els.search.addEventListener("focus", syncSearchState);
   els.search.addEventListener("blur", syncSearchState);
+  window.visualViewport?.addEventListener("resize", syncSearchState);
+  window.addEventListener("resize", syncSearchState);
   els.clearSearch.addEventListener("pointerdown", (event) => event.preventDefault());
   els.clearSearch.addEventListener("click", () => {
     els.search.value = "";
