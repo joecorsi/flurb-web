@@ -1162,7 +1162,7 @@
     state.displayLimit = 100;
     renderTracks();
   });
-  els.search.addEventListener("focus", syncSearchState);
+  els.search.addEventListener("focus", () => syncSearchState());
   els.search.addEventListener("blur", () => syncSearchState(true));
   window.visualViewport?.addEventListener("resize", scheduleViewportSync);
   window.visualViewport?.addEventListener("scroll", scheduleViewportSync);
