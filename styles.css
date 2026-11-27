@@ -1198,4 +1198,81 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .favorite-button:hover:not(:disabled) { transform: none; }
 .player-controls { display: contents !important; }
 .scrubber-row { grid-area: seek; width: 100%; }
+
+/* Keep the open view menu above the artwork viewer and all list content. */
+.library-sticky { z-index: 60; }
+.mode-menu { z-index: 70; }
+
+/* Remove browser tap/focus pills from the square navigation controls and hearts. */
+#home-button,
+#settings-button,
+#home-button:hover:not(:disabled),
+#settings-button:hover:not(:disabled),
+#home-button:active,
+#settings-button:active,
+#home-button:focus,
+#settings-button:focus,
+#home-button:focus-visible,
+#settings-button:focus-visible,
+.favorite-button,
+.track-favorite,
+.favorite-button:hover:not(:disabled),
+.track-favorite:hover:not(:disabled),
+.favorite-button:active,
+.track-favorite:active,
+.favorite-button:focus,
+.track-favorite:focus,
+.favorite-button:focus-visible,
+.track-favorite:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+#home-button:hover:not(:disabled),
+#settings-button:hover:not(:disabled),
+#home-button:active,
+#settings-button:active,
+#home-button:focus,
+#settings-button:focus,
+#home-button:focus-visible,
+#settings-button:focus-visible {
+  border-color: #3a3c3f !important;
+  color: #eee;
+  background: #1c1e20;
+}
+.favorite-button:hover:not(:disabled),
+.track-favorite:hover:not(:disabled),
+.favorite-button:active,
+.track-favorite:active,
+.favorite-button:focus,
+.track-favorite:focus,
+.favorite-button:focus-visible,
+.track-favorite:focus-visible {
+  color: #a54fff;
+  background: transparent !important;
+}
+.favorite-button.active,
+.track-favorite.active { color: #a54fff !important; }
+.favorite-button:active:not(:disabled),
+.track-favorite:active:not(:disabled) { color: #a54fff !important; }
+
+/* Shuffle and repeat only change their glyph color while pressed. */
+#shuffle-button,
+#repeat-button,
+#shuffle-button:hover:not(:disabled),
+#repeat-button:hover:not(:disabled),
+#shuffle-button:active,
+#repeat-button:active,
+#shuffle-button:focus,
+#repeat-button:focus,
+#shuffle-button:focus-visible,
+#repeat-button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  -webkit-tap-highlight-color: transparent;
+}
+#shuffle-button:active:not(:disabled),
+#repeat-button:active:not(:disabled) { color: #fff !important; }
 .transport { grid-area: transport; }
