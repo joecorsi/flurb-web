@@ -823,9 +823,6 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
   .track-rows { gap: 0; }
   .track-row { min-height: 4rem; }
 }
-.playlist-submenu { max-height: 13rem; overflow-y: auto; border-block: 1px solid #343638; background: #151617; }
-.playlist-submenu[hidden] { display: none !important; }
-.playlist-submenu button { padding-left: 1.35rem; color: #bfc0c1; font-size: .73rem; }
 
 
 /* Exact 10px top rhythm from the viewport edge through each control. */
@@ -1448,3 +1445,51 @@ html, body, body * {
   -webkit-touch-callout: default;
 }
 img { -webkit-user-drag: none; }
+
+
+.track-overflow-menu.opens-up { top: auto; bottom: calc(100% + .2rem); }
+.playlist-picker {
+  width: min(28rem, calc(100% - 20px));
+  max-height: min(36rem, calc(100dvh - 20px - var(--visual-viewport-top, 0px) - var(--visual-viewport-bottom, 0px)));
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #3a3c3f;
+  border-radius: 5px;
+  color: #eee;
+  background: #202124;
+}
+.playlist-picker::backdrop { background: #000a; }
+.playlist-picker-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  max-height: inherit;
+}
+.playlist-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-bottom: 1px solid #3a3c3f;
+}
+.playlist-picker-header h2 { margin: 0; font: 600 .95rem var(--sans); }
+.playlist-picker-list { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.playlist-picker-list button, .playlist-picker-create {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: .65rem 10px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  font: 500 .85rem var(--sans);
+  cursor: pointer;
+}
+.playlist-picker-list button + button { border-top: 1px solid #343638; }
+.playlist-picker-list button:hover, .playlist-picker-create:hover { background: #282a2d; }
+.playlist-picker-list button:focus-visible, .playlist-picker-create:focus-visible { outline: 1px solid #fff; outline-offset: -2px; }
+.playlist-picker-create { border-top: 1px solid #3a3c3f; }
+.playlist-picker-message { margin: 0; padding: .55rem 10px; color: #a0a1a4; font-size: .8rem; }
+.playlist-picker-message:empty { display: none; }
+.playlist-picker-message.is-error { color: #f1a091; }

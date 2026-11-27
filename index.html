@@ -9,10 +9,10 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=settings-2">
+  <link rel="stylesheet" href="./styles.css?v=playlist-picker-1">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu" crossorigin="anonymous" defer></script>
   <script src="./turso-sync.js?v=1" defer></script>
-  <script src="./app.js?v=settings-2" defer></script>
+  <script src="./app.js?v=playlist-picker-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -31,7 +31,7 @@
               <button type="button" role="menuitemradio" aria-checked="true" data-view="recent"><i class="view-option-icon" data-lucide="clock-3" aria-hidden="true"></i><span class="view-option-label">Recently added</span><span class="mode-count" id="recent-count">0</span></button>
               <button type="button" role="menuitemradio" aria-checked="false" data-view="favorites"><i class="view-option-icon" data-lucide="heart" aria-hidden="true"></i><span class="view-option-label">Favorites</span><span class="mode-count" id="favorites-count">0</span></button>
               <button type="button" role="menuitemradio" aria-checked="false" data-view="playlists"><i class="view-option-icon" data-lucide="list-music" aria-hidden="true"></i><span class="view-option-label">Playlists</span><span class="mode-count" id="playlists-count">0</span></button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-view="library"><i class="view-option-icon" data-lucide="library" aria-hidden="true"></i><span class="view-option-label">Library</span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-view="library"><i class="view-option-icon" data-lucide="library" aria-hidden="true"></i><span class="view-option-label">Library</span><span class="mode-count" id="library-count">0</span></button>
             </div>
             </div>
           </div>
@@ -79,9 +79,20 @@
       <button class="settings-scrim" type="button" aria-label="Close settings" data-close-settings></button>
       <section class="settings-dialog" role="dialog" aria-modal="true" aria-label="Flurb settings">
         <header class="settings-dialog-header"><strong>Settings</strong><button class="icon-button settings-close" id="settings-close" type="button" aria-label="Close settings"><i data-lucide="x" aria-hidden="true"></i></button></header>
-        <iframe class="settings-frame" id="settings-frame" src="./settings.html?embedded=1&v=settings-2" title="Flurb settings"></iframe>
+        <iframe class="settings-frame" id="settings-frame" src="./settings.html?embedded=1&v=playlist-picker-1" title="Flurb settings"></iframe>
       </section>
     </div>
+    <dialog class="playlist-picker" id="playlist-picker" aria-labelledby="playlist-picker-title">
+      <div class="playlist-picker-body">
+        <header class="playlist-picker-header">
+          <h2 id="playlist-picker-title">Add to playlist</h2>
+          <button class="icon-button" id="playlist-picker-close" type="button" aria-label="Close playlist picker" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
+        </header>
+        <div class="playlist-picker-list" id="playlist-picker-list"></div>
+        <p class="playlist-picker-message" id="playlist-picker-message" role="status"></p>
+        <button class="playlist-picker-create" id="playlist-picker-create" type="button">+ New playlist…</button>
+      </div>
+    </dialog>
     <audio id="audio" preload="metadata"></audio>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>

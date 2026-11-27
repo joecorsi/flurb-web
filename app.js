@@ -19,12 +19,15 @@
     settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), nowTitleViewport: $("#now-title-viewport"), emptyGlyph: $(".empty-glyph"),
     viewButton: $("#view-button"), viewLabel: $("#view-label"), viewMenu: $("#view-menu"),
     recentOption: $('[data-view="recent"]'), recentCount: $("#recent-count"), favoritesOption: $('[data-view="favorites"]'), favoritesCount: $("#favorites-count"),
-    playlistsOption: $('[data-view="playlists"]'), playlistsCount: $("#playlists-count"), libraryOption: $('[data-view="library"]'),
+    playlistsOption: $('[data-view="playlists"]'), playlistsCount: $("#playlists-count"), libraryOption: $('[data-view="library"]'), libraryCount: $("#library-count"),
     trackList: $("#track-list"), tableBody: $("#table-body"), emptyState: $("#empty-state"), trackCount: $("#track-count"), notice: $("#notice"), noticeMessage: $("#notice-message"),
     player: $("#player"), play: $("#play-button"),
     previous: $("#previous-button"), next: $("#next-button"), shuffle: $("#shuffle-button"), repeat: $("#repeat-button"), progress: $("#progress"),
     elapsed: $("#elapsed-time"), duration: $("#duration-time"), nowTitle: $("#now-title"), nowAlbum: $("#now-album"), nowFavorite: $("#now-favorite"),
-    toast: $("#toast"), settingsLink: $("#settings-link")
+    toast: $("#toast"), settingsLink: $("#settings-link"),
+    playlistPicker: $("#playlist-picker"), playlistPickerList: $("#playlist-picker-list"),
+    playlistPickerMessage: $("#playlist-picker-message"), playlistPickerClose: $("#playlist-picker-close"),
+    playlistPickerCreate: $("#playlist-picker-create")
   };
   const state = {
     token: readDropboxToken(),
@@ -270,10 +273,37 @@
     history.replaceState({ flurbRootGuard: true }, "", location.href);
     loadLibraryFolder();
   }
+  function captureView() {
+    return {
+      view: state.viewMode,
+      path: state.folderPath,
+      playlistId: state.activePlaylistId,
+      recentGridReturn: state.recentGridReturn,
+      query: els.search.value,
+      searchScroll: state.searchScroll,
+      limit: state.displayLimit,
+      top: catalogScroller().scrollTop
+    };
+  }
+  function restoreView(view) {
+    state.viewMode = view.view;
+    state.folderPath = state.catalogFolders.has(view.path) ? view.path : CATALOG_ROOT;
+    state.folderHistory = folderAncestors(state.folderPath);
+    state.activePlaylistId = state.playlists.some((playlist) => playlist.id === view.playlistId) ? view.playlistId : null;
+    state.recentGridReturn = view.recentGridReturn;
+    state.searchScroll = view.searchScroll;
+    state.displayLimit = view.limit;
+    els.search.value = view.query;
+    localStorage.setItem("flurb.dropbox.actionView", view.view);
+    syncSearchState();
+    refreshCatalogView(false);
+    catalogScroller().scrollTo({ top: view.top, behavior: "instant" });
+  }
   function installHistoryNavigation() {
     history.replaceState({ flurbRootGuard: true }, "", location.href);
     history.pushState({ flurbRootGuard: true }, "", location.href);
-    window.addEventListener("popstate", () => {
+    window.addEventListener("popstate", (event) => {
+      if (event.state?.flurbView) return restoreView(event.state.flurbView);
       const root = CATALOG_ROOT;
       const atLibraryRoot = !state.folderPath || state.folderPath === root;
       if (state.viewMode === "playlists" && state.activePlaylistId) {
@@ -338,7 +368,8 @@
   function updateQuickActions() {
     const playlist = state.playlists.find((item) => item.id === state.activePlaylistId);
     els.viewLabel.textContent = state.viewMode === "recent" ? "Recently added" : state.viewMode === "favorites" ? "Favorites" : state.viewMode === "playlists" ? "Playlists" : "Library";
-    els.recentCount.textContent = String(state.catalog.size);
+    els.recentCount.textContent = String(recentAlbums("").length);
+    els.libraryCount.textContent = String(state.catalog.size);
     els.favoritesCount.textContent = String(state.favorites.size);
     els.playlistsCount.textContent = String(state.playlists.length);
     els.recentOption.setAttribute("aria-checked", String(state.viewMode === "recent"));
@@ -1181,27 +1212,72 @@
     return row;
   }
   async function addTrackToPlaylist(track, playlist) {
-    let added = false;
+    let result = "unavailable";
     const saved = await editCloud((cache) => {
       const current = cache.playlists.get(playlist.id);
       const tracks = cache.members.get(playlist.id) || [];
-      if (!current || current.smart_rule || !cache.tracks.has(track.id) || tracks.includes(track.id)) return [];
-      added = true;
+      if (!current || current.smart_rule || !cache.tracks.has(track.id)) return [];
+      if (tracks.includes(track.id)) {
+        result = "duplicate";
+        return [];
+      }
+      result = "added";
       return [
         { kind: "members", key: playlist.id, patch: { tracks: [...tracks, track.id] } },
         playlistModified(playlist.id, appleTimestamp())
       ];
     });
-    if (saved && added) toast(`Added to ${playlist.name}`);
+    return saved ? result : "failed";
+  }
+  let playlistPickerTrack = null;
+  let playlistPickerBusy = false;
+
+  function openPlaylistPicker(track) {
+    playlistPickerTrack = track;
+    playlistPickerBusy = false;
+    els.playlistPickerMessage.textContent = "";
+    els.playlistPickerMessage.classList.remove("is-error");
+    els.playlistPickerList.removeAttribute("aria-busy");
+    els.playlistPickerList.replaceChildren();
+    const playlists = state.playlists.filter((playlist) => !playlist.smart_rule)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    for (const playlist of playlists) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = playlist.name;
+      button.addEventListener("click", () => selectPlaylist(playlist));
+      els.playlistPickerList.append(button);
+    }
+    els.playlistPickerList.scrollTop = 0;
+    if (!playlists.length) els.playlistPickerMessage.textContent = "No editable playlists yet.";
+    els.playlistPicker.showModal();
+  }
+  async function selectPlaylist(playlist) {
+    const track = playlistPickerTrack;
+    if (!track || playlistPickerBusy) return;
+    playlistPickerBusy = true;
+    els.playlistPickerList.setAttribute("aria-busy", "true");
+    const result = await addTrackToPlaylist(track, playlist);
+    if (playlistPickerTrack !== track || !els.playlistPicker.open) return;
+    playlistPickerBusy = false;
+    els.playlistPickerList.removeAttribute("aria-busy");
+    if (result === "added") {
+      els.playlistPicker.close();
+      toast(`Added to ${playlist.name}`);
+      return;
+    }
+    els.playlistPickerMessage.classList.add("is-error");
+    els.playlistPickerMessage.textContent = result === "duplicate"
+      ? `This track is already in ${playlist.name}.`
+      : result === "unavailable" ? "This track or playlist is no longer available." : "Could not add this track. Try again.";
   }
   function showAlbumInLibrary(track) {
     if (!state.catalog.has(track.id)) return;
+    const origin = captureView();
     const path = albumPath(state.catalog.get(track.id));
-    state.viewMode = "library";
-    state.activePlaylistId = null;
-    localStorage.setItem("flurb.dropbox.actionView", "library");
-    state.folderHistory = folderAncestors(path);
-    loadLibraryFolder(path);
+    history.replaceState({ ...history.state, flurbView: origin }, "", location.href);
+    restoreView({ view: "library", path, playlistId: null, recentGridReturn: null, query: "", searchScroll: null, limit: 100, top: 0 });
+    history.pushState({ flurbView: captureView() }, "", location.href);
   }
   function makeFolderRow(folder, index = 0) {
     const row = document.createElement("button");
@@ -1273,16 +1349,29 @@
     const more = document.createElement("button"); more.type = "button"; more.className = "icon-button track-more"; more.innerHTML = '<i data-lucide="ellipsis" aria-hidden="true"></i>';
     const menu = document.createElement("div"); menu.className = "track-overflow-menu"; menu.hidden = true;
     const add = document.createElement("button"); add.type = "button"; add.textContent = "Add to playlist";
-    const submenu = document.createElement("div"); submenu.className = "playlist-submenu"; submenu.hidden = true;
-    state.playlists.filter((playlist) => !playlist.smart_rule).sort((a, b) => a.name.localeCompare(b.name)).forEach((playlist) => {
-      const choice = document.createElement("button"); choice.type = "button"; choice.textContent = playlist.name;
-      choice.addEventListener("click", (event) => { event.stopPropagation(); menu.hidden = true; addTrackToPlaylist(track, playlist); }); submenu.append(choice);
+    add.addEventListener("click", (event) => {
+      event.stopPropagation();
+      menu.hidden = true;
+      openPlaylistPicker(track);
     });
-    const create = document.createElement("button"); create.type = "button"; create.textContent = "+ New playlist…";
-    create.addEventListener("click", (event) => { event.stopPropagation(); menu.hidden = true; createPlaylist(track); });
-    submenu.append(create);
-    const album = document.createElement("button"); album.type = "button"; album.textContent = "Show album in library"; album.addEventListener("click", (event) => { event.stopPropagation(); menu.hidden = true; showAlbumInLibrary(track); });
-    menu.append(add, submenu, album); more.addEventListener("click", (event) => { event.stopPropagation(); document.querySelectorAll(".track-overflow-menu").forEach((other) => { if (other !== menu) other.hidden = true; }); menu.hidden = !menu.hidden; });
+    const album = document.createElement("button");
+    album.type = "button";
+    album.textContent = "Show album in library";
+    album.addEventListener("click", (event) => {
+      event.stopPropagation();
+      menu.hidden = true;
+      showAlbumInLibrary(track);
+    });
+    menu.append(add, album);
+    more.addEventListener("click", (event) => {
+      event.stopPropagation();
+      document.querySelectorAll(".track-overflow-menu").forEach((other) => { if (other !== menu) other.hidden = true; });
+      menu.hidden = !menu.hidden;
+      menu.classList.remove("opens-up");
+      if (!menu.hidden && menu.getBoundingClientRect().bottom > Math.min(window.innerHeight, els.player.getBoundingClientRect().top)) {
+        menu.classList.add("opens-up");
+      }
+    });
     overflow.append(more, menu);
     actions.append(favorite, overflow);
     row.append(artworkShell, copy, actions);
@@ -1551,6 +1640,22 @@
       els.viewButton.setAttribute("aria-expanded", "false");
       els.viewButton.focus();
     }
+  });
+  els.playlistPickerClose.addEventListener("click", () => els.playlistPicker.close());
+  els.playlistPicker.addEventListener("click", (event) => {
+    if (event.target === els.playlistPicker) els.playlistPicker.close();
+  });
+  els.playlistPicker.addEventListener("close", () => {
+    const track = playlistPickerTrack;
+    playlistPickerTrack = null;
+    playlistPickerBusy = false;
+    if (track) els.tableBody.querySelector(`[data-track-id="${CSS.escape(track.id)}"] .track-more`)?.focus({ preventScroll: true });
+  });
+  els.playlistPickerCreate.addEventListener("click", () => {
+    if (!playlistPickerTrack || playlistPickerBusy) return;
+    const track = playlistPickerTrack;
+    els.playlistPicker.close();
+    createPlaylist(track);
   });
   els.settingsLink.addEventListener("click", (event) => { event.preventDefault(); openSettings(); });
   els.home.addEventListener("click", goHomeLibrary);
