@@ -556,7 +556,7 @@
     if (link) els.playerArtwork.src = link;
     else els.playerArtwork.removeAttribute("src");
     els.playerArtworkShell.classList.toggle("has-artwork", Boolean(link));
-    els.playerArtworkButton.disabled = !track;
+    els.playerArtworkButton.disabled = !link;
   }
   function updateViewerArtwork(track) {
     const link = track && state.artworkLinks.get(track.id);
@@ -566,7 +566,7 @@
     els.artworkViewerCover.classList.toggle("has-artwork", Boolean(link));
   }
   function openArtworkViewer(track) {
-    if (!track) return;
+    if (!track || !state.artworkLinks.has(track.id)) return;
     state.viewerTrack = track;
     updateViewerArtwork(track);
     els.artworkViewer.hidden = false;
@@ -812,7 +812,7 @@
       els.emptyState.querySelector("span").textContent = "";
       return;
     }
-    const renderedRows = atViewRoot
+    const renderedRows = atViewRoot && state.viewMode !== "favorites"
       ? groupRowsByLetter(rows, state.viewMode === "library")
       : rows;
     const searchHeaderIndex = renderedRows.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
@@ -984,17 +984,17 @@
     actions.append(favorite, overflow);
     row.append(artworkShell, copy, actions);
     row.addEventListener("click", (event) => {
-      if (!event.target.closest("button")) playTrack(track, true);
+      if (!event.target.closest("button")) playTrack(track);
     });
     row.addEventListener("keydown", (event) => {
       if ((event.key === "Enter" || event.key === " ") && event.target === row) {
         event.preventDefault();
-        playTrack(track, true);
+        playTrack(track);
       }
     });
     return row;
   }
-  async function playTrack(track, showArtwork = false) {
+  async function playTrack(track) {
     if (!state.token) return toast("Open Dropbox setup first");
     if (!isInsideLibrary(track)) return showNotice("That track is outside the selected Flurb folder.", "error");
     const requestId = ++state.playRequest;
@@ -1002,7 +1002,7 @@
     state.loadingTrack = true;
     state.current = track;
     updatePlayerArtwork(track);
-    if (showArtwork) openArtworkViewer(track);
+    if (hasId3ArtworkSupport(track)) queueTrackArtwork(track);
     els.nowTitle.textContent = track.name.replace(/\.[^.]+$/, "");
     updateTitleMarquee();
     setPlayerMetadata(track);
@@ -1061,7 +1061,7 @@
     const hasTrack = Boolean(state.current);
     els.play.disabled = !hasTrack || state.loadingTrack;
     els.nowPlayingLink.disabled = !hasTrack;
-    els.playerArtworkButton.disabled = !hasTrack;
+    els.playerArtworkButton.disabled = !state.current || !state.artworkLinks.has(state.current.id);
     els.nowPlayingLink.setAttribute("aria-label", hasTrack ? `Open folder containing ${state.current.name.replace(/\.[^.]+$/, "")}` : "Nothing playing");
     els.previous.disabled = !hasTrack;
     els.next.disabled = !hasTrack;
@@ -1197,8 +1197,21 @@
   });
   els.playerArtworkButton.addEventListener("click", () => {
     if (!els.artworkViewer.hidden) closeArtworkViewer();
-    else openArtworkViewer(state.current);
+    else if (state.current && state.artworkLinks.has(state.current.id)) openArtworkViewer(state.current);
   });
+  let artworkSwipeStart = null;
+  els.artworkViewer.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" || els.artworkViewer.hidden) return;
+    artworkSwipeStart = { x: event.clientX, y: event.clientY };
+  });
+  els.artworkViewer.addEventListener("pointerup", (event) => {
+    if (!artworkSwipeStart) return;
+    const dx = event.clientX - artworkSwipeStart.x;
+    const dy = event.clientY - artworkSwipeStart.y;
+    artworkSwipeStart = null;
+    if (dy > 80 && dy > Math.abs(dx) * 1.2) closeArtworkViewer();
+  });
+  els.artworkViewer.addEventListener("pointercancel", () => { artworkSwipeStart = null; });
   window.addEventListener("resize", () => {
     if (!els.artworkViewer.hidden && state.viewerTrack) {
       updateViewerArtwork(state.viewerTrack);
@@ -1238,6 +1251,8 @@
     els.repeat.classList.toggle("active", state.repeat !== "off");
     els.repeat.setAttribute("aria-label", `Repeat ${state.repeat}`);
     els.repeat.title = `Repeat ${state.repeat}`;
+    els.repeat.innerHTML = `<i data-lucide="${state.repeat === "one" ? "repeat-1" : "repeat"}" aria-hidden="true"></i>`;
+    renderLucideIcons(els.repeat);
     toast(`Repeat ${state.repeat}`);
   });
   els.nowFavorite.addEventListener("click", () => { if (state.current) toggleFavorite(state.current); });
