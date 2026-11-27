@@ -77,7 +77,9 @@
     viewerTrack: null,
     loadingTrack: false,
     shuffle: false,
-    libraryQueue: null,
+    playback: null,
+    audioTrackId: null,
+    playbackLinks: new Map(),
     repeat: "off",
     favorites: new Set(),
     playRequest: 0,
@@ -962,7 +964,7 @@
       else setPlayerMetadata(state.current);
       updatePlayerArtwork(state.current);
     }
-    if (state.libraryQueue) state.libraryQueue = [...state.catalog.values()];
+    prepareNextTrack();
     refreshCatalogView(false);
     scroll.scrollTo({ top: offset, behavior: "instant" });
     for (const track of artworkUpdates) queueTrackArtwork(track, false, true);
@@ -1083,7 +1085,7 @@
     state.folderHistory = [];
     state.activePlaylistId = null;
     state.recentGridReturn = null;
-    state.libraryQueue = null;
+    state.playback = null;
     updateLibraryShuffleButton();
     hideNotice();
     state.catalog = new Map();
@@ -1335,7 +1337,22 @@
     }, { rootMargin: "500px 0px" });
     state.listObserver.observe(row);
   }
+  function libraryRows(folders, tracks, atRoot) {
+    const rows = [
+      ...folders.map((item) => ({ kind: "folder", item })),
+      ...tracks.map((item) => ({ kind: "track", item }))
+    ].sort((a, b) =>
+      (a.kind === "track" ? trackTitle(a.item) : a.item.name).localeCompare(
+        b.kind === "track" ? trackTitle(b.item) : b.item.name, undefined, { numeric: true, sensitivity: "base" }));
+    return atRoot ? groupRowsByLetter(rows, true) : rows;
+  }
+  function playlistRows(query) {
+    const playlists = state.playlists.filter((playlist) => !query || playlist.name.toLocaleLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return groupRowsByLetter(playlists.map((item) => ({ kind: "playlist", item })), false);
+  }
   function renderTracks(scrollSearch = true) {
+    updateTransport();
     setLibraryLoading(false);
     state.listObserver?.disconnect();
     state.artworkObserver?.disconnect();
@@ -1376,9 +1393,7 @@
     if (state.viewMode === "playlists" && !state.activePlaylistId) {
       const create = document.createElement("button"); create.type = "button"; create.className = "library-row artist-row playlist-create"; create.textContent = "+ New playlist";
       create.addEventListener("click", () => openNewPlaylist()); els.tableBody.append(create);
-      const playlists = state.playlists.filter((playlist) => !query || playlist.name.toLocaleLowerCase().includes(query)).slice().sort((a, b) => a.name.localeCompare(b.name));
-      const playlistRows = playlists.map((item) => ({ kind: "playlist", item }));
-      const renderedPlaylists = groupRowsByLetter(playlistRows, false);
+      const renderedPlaylists = playlistRows(query);
       const searchHeaderIndex = renderedPlaylists.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
       if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 1;
       renderedPlaylists.slice(0, state.displayLimit).forEach(({ kind, item, letter }) => {
@@ -1390,13 +1405,9 @@
       if (scrollSearch && query) scrollToSearchLetter();
       return;
     }
-    const rows = [
-      ...folders.map((folder) => ({ kind: "folder", item: folder })),
-      ...tracks.map((track) => ({ kind: "track", item: track }))
-    ];
-    if (state.viewMode === "library") rows.sort((a, b) =>
-      (a.kind === "track" ? trackTitle(a.item) : a.item.name).localeCompare(
-        b.kind === "track" ? trackTitle(b.item) : b.item.name, undefined, { numeric: true, sensitivity: "base" }));
+    const rows = state.viewMode === "library"
+      ? libraryRows(folders, tracks, atViewRoot)
+      : tracks.map((item) => ({ kind: "track", item }));
 
     if (!rows.length) {
       els.emptyState.hidden = false;
@@ -1404,17 +1415,14 @@
       els.emptyState.querySelector("span").textContent = "";
       return;
     }
-    const renderedRows = atViewRoot && state.viewMode === "library"
-      ? groupRowsByLetter(rows, state.viewMode === "library")
-      : rows;
-    const searchHeaderIndex = renderedRows.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
+    const searchHeaderIndex = rows.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
     if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 1;
-    renderedRows.slice(0, state.displayLimit).forEach(({ kind, item, letter }, index) => {
+    rows.slice(0, state.displayLimit).forEach(({ kind, item, letter }, index) => {
       if (kind === "letter") els.tableBody.append(makeLibraryLetterRow(letter));
       else els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
     });
     renderLucideIcons(els.tableBody);
-    observeMoreRows(renderedRows.length);
+    observeMoreRows(rows.length);
     if (scrollSearch && query && atViewRoot) scrollToSearchLetter();
   }
   function playlistModified(id, now) {
@@ -1643,36 +1651,105 @@
     });
     return row;
   }
-  async function playTrack(track, libraryQueue = null) {
-    if (!state.token || !state.libraryFolder) {
-      openSettings();
-      return;
+  function playbackContext() {
+    return JSON.stringify([state.viewMode, state.folderPath, state.activePlaylistId, els.search.value.trim().toLocaleLowerCase()]);
+  }
+  function contextTracks() {
+    const query = els.search.value.trim().toLocaleLowerCase();
+    if (isRecentlyAddedGrid()) {
+      const cutoff = recentCutoff();
+      return recentAlbums(query).flatMap((album) => album.tracks
+        .filter((track) => addedDate(track) >= cutoff).sort(albumTrackOrder));
     }
-    if (!state.catalog.has(track.id)) return;
-    track = state.catalog.get(track.id);
+    if (state.viewMode === "playlists" && !state.activePlaylistId) {
+      const tracks = playlistRows(query).flatMap((row) => row.item?.tracks || []);
+      return [...new Map(tracks.map((track) => [track.id, track])).values()];
+    }
+    if (state.viewMode !== "library") return filteredTracks();
+    function collect(folders, tracks, atRoot = false) {
+      return libraryRows(folders, tracks, atRoot).flatMap(({ kind, item }) => {
+        if (kind === "track") return [item];
+        if (kind !== "folder") return [];
+        const folder = state.catalogFolders.get(item.path_lower);
+        return folder ? collect(folder.folders, folder.tracks) : [];
+      });
+    }
+    return collect(state.entries.filter((folder) => folder.name.toLocaleLowerCase().includes(query)),
+      filteredTracks(), state.folderPath === CATALOG_ROOT);
+  }
+  function playbackLink(track) {
     const path = dropboxTrackPath(track);
-    state.libraryQueue = libraryQueue;
+    const links = state.playbackLinks;
+    const previous = links.get(path);
+    if (previous && previous.expires > Date.now()) return previous;
+    const entry = { expires: Date.now() + 2 * 60 * 60 * 1000 };
+    entry.pending = dropbox("/files/get_temporary_link", { path }).then(({ link }) => {
+      entry.link = link;
+      return link;
+    }).catch((error) => {
+      if (links.get(path) === entry) links.delete(path);
+      throw error;
+    });
+    links.delete(path);
+    links.set(path, entry);
+    if (links.size > 32) links.delete(links.keys().next().value);
+    return entry;
+  }
+  function prepareNextTrack() {
+    const queue = state.playback;
+    if (!queue || queue.finished || !state.token || !state.libraryFolder || state.repeat === "one") return;
+    const next = FlurbPlayback.upcoming(queue, state.repeat === "all");
+    const ids = [next, ...queue.order.slice(queue.position + 2, queue.position + 3)];
+    for (const id of ids) {
+      const track = state.catalog.get(id);
+      if (track) playbackLink(track).pending.catch(() => {});
+    }
+  }
+  function playTrack(track) {
+    startPlayback({ selected: track.id });
+  }
+  function startPlayback({ selected = null, wholeLibrary = false } = {}) {
+    if (!state.token || !state.libraryFolder) return openSettings();
+    const tracks = wholeLibrary ? [...state.catalog.values()] : contextTracks();
+    if (!tracks.length) return toast("No playable tracks in this view");
+    const queue = FlurbPlayback.create(tracks.map((track) => track.id), { start: selected, shuffle: state.shuffle });
+    queue.context = playbackContext();
+    queue.wholeLibrary = wholeLibrary;
+    state.playback = queue;
     updateLibraryShuffleButton();
+    return playQueuedTrack();
+  }
+  async function playQueuedTrack() {
+    const track = state.catalog.get(FlurbPlayback.current(state.playback));
+    if (!track) return;
     const requestId = ++state.playRequest;
-    els.audio.pause();
     state.loadingTrack = true;
     state.current = track;
-    updatePlayerArtwork(track);
-    queueTrackArtwork(track, true);
-    setPlayerMetadata(track);
-    if (state.loadingTrack) els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
-    els.nowFavorite.disabled = false;
-    updateFavoriteButton();
-    updateTransport();
-    renderTracks();
+    let started;
     try {
-      const result = await dropbox("/files/get_temporary_link", { path });
-      if (requestId !== state.playRequest) return;
-      els.audio.src = result.link;
-      await els.audio.play();
-      hideNotice();
-      updateTransport();
+      const entry = playbackLink(track);
+      if (entry.link) {
+        // Keep the same media element and start in the ended callback when its next link is ready.
+        els.audio.src = entry.link;
+        state.audioTrackId = track.id;
+        started = els.audio.play();
+      }
+      prepareNextTrack();
+      updatePlayerArtwork(track);
+      queueTrackArtwork(track, true);
+      setPlayerMetadata(track);
+      els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
+      updateFavoriteButton();
       renderTracks();
+      if (!started) {
+        const link = await entry.pending;
+        if (requestId !== state.playRequest) return;
+        els.audio.src = link;
+        state.audioTrackId = track.id;
+        started = els.audio.play();
+      }
+      await started;
+      if (requestId === state.playRequest) hideNotice();
     } catch (error) {
       if (requestId === state.playRequest) {
         const reason = /path\/not_found/.test(error.message) ? "This file is missing from this device’s Dropbox music folder." : friendlyError(error);
@@ -1681,54 +1758,58 @@
     } finally {
       if (requestId === state.playRequest) {
         state.loadingTrack = false;
-        if (state.current) setPlayerMetadata(state.current);
-        updateTransport();
+        setPlayerMetadata(state.current);
+        renderTracks();
       }
     }
   }
+  function resumePlayback() {
+    if (!state.playback || state.playback.finished) return startPlayback();
+    if (state.audioTrackId !== state.current?.id) return playQueuedTrack();
+    return els.audio.play().catch((error) => showNotice(friendlyError(error), "error"));
+  }
   function setShuffle(enabled) {
     state.shuffle = enabled;
+    if (state.playback) FlurbPlayback.setShuffle(state.playback, enabled);
+    prepareNextTrack();
     els.shuffle.classList.toggle("active", enabled);
     els.shuffle.setAttribute("aria-label", `Shuffle ${enabled ? "on" : "off"}`);
     els.shuffle.setAttribute("aria-pressed", String(enabled));
     updateLibraryShuffleButton();
   }
   function updateLibraryShuffleButton() {
-    els.shuffleLibrary.setAttribute("aria-pressed", String(Boolean(state.shuffle && state.libraryQueue)));
+    els.shuffleLibrary.setAttribute("aria-pressed", String(Boolean(state.shuffle && state.playback?.wholeLibrary && !state.playback.finished)));
   }
   function shuffleLibrary() {
-    if (els.shuffleLibrary.hidden) return;
-    if (!state.token || !state.libraryFolder) return openSettings();
-    const queue = [...state.catalog.values()];
-    if (!queue.length) return toast("No playable tracks in this library");
-    const candidates = queue.filter((track) => track.id !== state.current?.id);
-    const track = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : queue[0];
-    setShuffle(true);
-    playTrack(track, queue);
+    if (!els.shuffleLibrary.hidden) {
+      setShuffle(true);
+      startPlayback({ wholeLibrary: true });
+    }
   }
   function playNext(direction = 1) {
-    const playlist = state.libraryQueue || visibleTracks();
-    if (!playlist.length) return;
-    const currentIndex = playlist.findIndex((track) => track.id === state.current?.id);
-    let nextIndex;
-    if (state.shuffle && direction > 0 && playlist.length > 1) {
-      const choices = playlist.length - (currentIndex >= 0 ? 1 : 0);
-      nextIndex = Math.floor(Math.random() * choices);
-      if (currentIndex >= 0 && nextIndex >= currentIndex) nextIndex += 1;
-    } else if (currentIndex < 0) {
-      nextIndex = direction > 0 ? 0 : playlist.length - 1;
-    } else {
-      nextIndex = (currentIndex + direction + playlist.length) % playlist.length;
+    const queue = state.playback;
+    if (!queue) return false;
+    for (let remaining = queue.tracks.length; remaining > 0; remaining -= 1) {
+      if (!FlurbPlayback.step(queue, direction, state.repeat === "all")) return false;
+      if (state.catalog.has(FlurbPlayback.current(queue))) {
+        updateLibraryShuffleButton();
+        playQueuedTrack();
+        return true;
+      }
     }
-    playTrack(playlist[nextIndex], state.libraryQueue);
+    return false;
+  }
+  function playPrevious() {
+    if (els.audio.currentTime > 3) els.audio.currentTime = 0;
+    else playNext(-1);
   }
   function registerMediaSessionActions() {
     const session = navigator.mediaSession;
     if (!session?.setActionHandler) return;
     const actions = {
-      play: () => els.audio.play().catch((error) => showNotice(friendlyError(error), "error")),
+      play: resumePlayback,
       pause: () => els.audio.pause(),
-      previoustrack: () => playNext(-1),
+      previoustrack: playPrevious,
       nexttrack: () => playNext(1),
       seekto: (details) => { if (Number.isFinite(details.seekTime)) els.audio.currentTime = details.seekTime; }
     };
@@ -1738,7 +1819,7 @@
   }
   function updateTransport() {
     const hasTrack = Boolean(state.current);
-    els.play.disabled = !hasTrack || state.loadingTrack;
+    els.play.disabled = (!hasTrack && !state.catalog.size) || state.loadingTrack;
     els.nowPlayingLink.disabled = !hasTrack;
     els.playerArtworkButton.disabled = !state.current || !state.artworkLinks.has(state.current.id);
     els.nowPlayingLink.setAttribute("aria-label", hasTrack ? `Open folder containing ${trackTitle(state.current)}` : "Nothing playing");
@@ -1998,14 +2079,17 @@
   });
   window.addEventListener("resize", updateTitleMarquee);
   function refreshDropboxFolder() {
+    const previousFolder = state.libraryFolder?.path_lower;
     try { state.libraryFolder = JSON.parse(localStorage.getItem("flurb.dropbox.libraryFolder") || "null"); } catch (_) { state.libraryFolder = null; }
     state.token = readDropboxToken();
     state.refreshToken = localStorage.getItem("flurb.dropbox.refreshToken") || "";
     state.tokenExpiresAt = Number(localStorage.getItem("flurb.dropbox.tokenExpiresAt") || 0);
+    if (!state.token || previousFolder !== state.libraryFolder?.path_lower) state.playbackLinks = new Map();
     if (!state.token && state.current) {
       state.playRequest += 1;
       state.current = null;
-      state.libraryQueue = null;
+      state.playback = null;
+      state.audioTrackId = null;
       state.loadingTrack = false;
       els.audio.pause();
       els.audio.removeAttribute("src");
@@ -2061,16 +2145,11 @@
   }, 5000);
   setInterval(checkVisibleArtwork, ARTWORK_REVISION_INTERVAL);
   els.play.addEventListener("click", () => {
-    if (!state.current) return;
-    if (els.audio.paused) els.audio.play().catch((e) => showNotice(friendlyError(e), "error"));
-    else els.audio.pause();
-    updateTransport();
-    renderTracks();
+    if (!els.audio.paused) els.audio.pause();
+    else if (state.playback?.context === playbackContext() && !state.playback.finished) resumePlayback();
+    else startPlayback();
   });
-  els.previous.addEventListener("click", () => {
-    if (els.audio.currentTime > 3) els.audio.currentTime = 0;
-    else playNext(-1);
-  });
+  els.previous.addEventListener("click", playPrevious);
   els.next.addEventListener("click", () => playNext(1));
   els.shuffleLibrary.addEventListener("click", () => shuffleLibrary());
   els.shuffle.addEventListener("click", () => {
@@ -2084,6 +2163,8 @@
     els.repeat.title = `Repeat ${state.repeat}`;
     els.repeat.innerHTML = `<i data-lucide="${state.repeat === "one" ? "repeat-1" : "repeat"}" aria-hidden="true"></i>`;
     renderLucideIcons(els.repeat);
+    els.audio.loop = state.repeat === "one";
+    prepareNextTrack();
     toast(`Repeat ${state.repeat}`);
   });
   els.nowFavorite.addEventListener("click", () => { if (state.current) toggleFavorite(state.current); });
@@ -2097,14 +2178,11 @@
   els.audio.addEventListener("playing", registerMediaSessionActions);
   els.audio.addEventListener("pause", () => { updateTransport(); renderTracks(); });
   els.audio.addEventListener("ended", () => {
-    if (state.repeat === "one") { els.audio.currentTime = 0; els.audio.play(); }
-    else {
-      const playlist = state.libraryQueue || visibleTracks();
-      if (state.repeat === "all" || state.shuffle || playlist.findIndex((t) => t.id === state.current?.id) < playlist.length - 1) playNext(1);
-      else {
-        updateTransport();
-        renderTracks();
-      }
+    if (!state.playback || state.repeat === "one" || state.audioTrackId !== state.current?.id) return;
+    if (!playNext()) {
+      state.playback.finished = true;
+      updateLibraryShuffleButton();
+      renderTracks();
     }
   });
   els.audio.addEventListener("error", () => {
@@ -2113,6 +2191,9 @@
 
 
 
+  // Tell Safari and other supporting browsers this media should survive screen lock.
+  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (_) {}
+  registerMediaSessionActions();
   installHistoryNavigation();
   renderLucideIcons();
   updateConnection();

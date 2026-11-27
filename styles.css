@@ -1363,8 +1363,11 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 }
 .player #shuffle-button,
 .player #repeat-button { color: #74767a !important; }
+.player :is(#previous-button, #next-button),
+.player :is(#previous-button, #next-button):hover:not(:disabled),
+.player :is(#previous-button, #next-button):focus { color: #808286 !important; }
 .player #shuffle-button.active,
-.player #repeat-button.active { color: #a54fff !important; }
+.player #repeat-button.active { color: #fff !important; }
 .player #shuffle-button:active:not(:disabled),
 .player #previous-button:active:not(:disabled),
 .player #next-button:active:not(:disabled),
