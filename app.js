@@ -704,6 +704,14 @@
   const albumPath = (track) => track.album?.trim()
     ? `${artistPath(track)}/${encodeURIComponent(track.album.trim())}` : artistPath(track);
 
+  function compilationAlbumPath(track) {
+    const album = track.album?.trim().normalize("NFC").toLowerCase();
+    if (!track.compilation || !album || album === "unknown album") return null;
+    // Like Rust's album browser, use the compilation title regardless of performer.
+    // One artwork tile represents the whole release, including all discs.
+    return `${CATALOG_ROOT}/@compilation-${encodeURIComponent(album)}`;
+  }
+
   function catalogFolder(path, name, parent) {
     if (state.catalogFolders.has(path)) return state.catalogFolders.get(path);
     const folder = { path_lower: path, name, folders: [], tracks: [] };
@@ -730,6 +738,8 @@
       const album = albumPath(track);
       const folder = album === artist.path_lower ? artist : catalogFolder(album, track.album.trim(), artist);
       folder.tracks.push(track);
+      const compilation = compilationAlbumPath(track);
+      if (compilation) catalogFolder(compilation, track.album.trim()).tracks.push(track);
     }
     state.playlists = [...snapshot.playlists.values()].map((playlist) => {
       const members = playlist.smart_rule === "hearted" ? [...state.favorites] : snapshot.members.get(playlist.id) || [];
@@ -977,10 +987,11 @@
   function buildRecentAlbums() {
     const albums = new Map();
     for (const track of state.catalog.values()) {
-      const path = albumPath(track);
+      const compilation = compilationAlbumPath(track);
+      const path = compilation || albumPath(track);
       if (!albums.has(path)) {
         albums.set(path, {
-          path, name: track.album?.trim() || "Unknown Album", artist: artistName(track),
+          path, name: track.album?.trim() || "Unknown Album", artist: compilation ? "Various Artists" : artistName(track),
           added: addedDate(track), tracks: []
         });
       }
@@ -995,7 +1006,7 @@
     if (!query) return state.recentAlbumCache;
     return state.recentAlbumCache.filter((album) =>
       [album.name, album.artist].some((name) => name.toLocaleLowerCase().includes(query)) ||
-      album.tracks.some((track) => trackTitle(track).toLocaleLowerCase().includes(query)));
+      album.tracks.some((track) => [trackTitle(track), playerArtist(track)].some((text) => text.toLocaleLowerCase().includes(query))));
   }
   function makeRecentAlbumTile(album) {
     const item = document.createElement("div");
@@ -1551,6 +1562,9 @@
     titlePointerStart = null;
     setTimeout(() => { state.titleScrollGesture = false; }, 350);
   };
+  document.addEventListener("dragstart", (event) => {
+    if (event.target instanceof HTMLImageElement) event.preventDefault();
+  });
   document.addEventListener("pointerup", finishTitlePointer);
   document.addEventListener("pointercancel", finishTitlePointer);
   els.nowPlayingLink.addEventListener("click", (event) => {

@@ -1436,3 +1436,15 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .recent-album-label { display: grid; min-width: 0; gap: .35rem; overflow-wrap: anywhere; }
 .recent-album-label span { color: #a9a9ab; }
 .recent-album-cover:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+
+html, body, body * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+#search {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+img { -webkit-user-drag: none; }
