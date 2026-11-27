@@ -871,7 +871,7 @@ html, body { touch-action: pan-y; overscroll-behavior-x: contain; }
 .library-loading-icon { animation: spin .9s linear infinite; }
 .now-playing-link { width: 100%; padding: 0; border: 0; color: inherit; background: transparent; text-align: center; cursor: pointer; }
 .now-playing-link:disabled { opacity: 1; cursor: default; }
-.settings-overlay { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 10px; background: #000a; }
+.settings-overlay { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 10px; background: #000a; }
 .settings-overlay[hidden] { display: none !important; }
 .settings-scrim { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
 .settings-dialog { position: relative; z-index: 1; display: flex; width: min(100%, 40rem); height: min(88dvh, 54rem); flex-direction: column; overflow: hidden; border: 1px solid #3a3c3f; border-radius: 5px; background: #202124; box-shadow: 0 20px 70px #000b; }
@@ -1255,6 +1255,30 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .track-favorite.active { color: #a54fff !important; }
 .favorite-button:active:not(:disabled),
 .track-favorite:active:not(:disabled) { color: #a54fff !important; }
+
+/* Search results scroll within the list while the controls stay in place. */
+@media (max-width: 699px) {
+  body.is-searching .library {
+    display: flex;
+    height: 100dvh;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  body.is-searching .library-sticky {
+    position: relative;
+    top: auto;
+    flex: 0 0 auto;
+  }
+  body.is-searching .track-list {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 
 /* Shuffle and repeat only change their glyph color while pressed. */
 #shuffle-button,
