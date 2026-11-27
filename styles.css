@@ -1159,7 +1159,7 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .player { grid-template-areas: "track" "seek" "transport"; }
 .player-track {
   display: grid !important;
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   grid-template-areas: "cover info favorite";
   align-items: center;
   gap: 10px;
@@ -1539,3 +1539,21 @@ html { -webkit-tap-highlight-color: transparent; }
 .new-playlist-actions button[type="submit"] { color: #fff; background: var(--lime); }
 
 .turso-sync-details { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+
+.player-track-actions { grid-area: favorite; display: flex; align-items: center; gap: 4px; }
+.track-saved { flex: none; display: inline-grid; place-items: center; width: 16px; color: #89898c; }
+.track-saved[hidden] { display: none; }
+.settings-offline-description { margin: .75rem 0 0; color: #bcbcbc; font-size: .82rem; }
+.settings-offline-progress {
+  display: grid;
+  gap: .45rem;
+  margin-top: .85rem;
+  padding: .55rem;
+  color: #eee;
+  background: var(--row-first);
+  font-size: .82rem;
+}
+.settings-offline-progress[hidden] { display: none; }
+.settings-offline-progress progress { width: 100%; height: .45rem; accent-color: var(--lime); }
+.settings-offline-progress progress::-webkit-progress-bar { border-radius: 4px; background: var(--row-alternate); }
+.settings-offline-progress progress::-webkit-progress-value { border-radius: 4px; background: var(--lime); }

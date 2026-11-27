@@ -6,7 +6,7 @@
   const DROPBOX_SIGNED_OUT = "flurb.dropbox.signedOutAt";
   const readDropboxToken = () => localStorage.getItem(DROPBOX_SIGNED_OUT) ? ""
     : localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
-  const { FlurbCloud, FlurbArtworkCache } = window;
+  const { FlurbCloud, FlurbArtworkCache, FlurbOfflineAudio } = window;
   const ARTWORK_HEADER_BYTES = 64 * 1024;
   const ARTWORK_REVISION_INTERVAL = 60000;
   const APPLE_EPOCH_OFFSET = 978307200;
@@ -81,6 +81,7 @@
     playback: null,
     audioTrackId: null,
     audioLinkExpires: 0,
+    audioObjectURL: null,
     bufferingAudio: false,
     playbackPosition: 0,
     playbackLinks: new Map(),
@@ -121,6 +122,7 @@
       sessionStorage.removeItem(key);
     });
     updateConnection();
+    configureOfflineAudio();
   }
   async function ensureAccessToken(force = false) {
     if (localStorage.getItem(DROPBOX_SIGNED_OUT)) throw new Error("Connect Dropbox in Settings.");
@@ -155,10 +157,11 @@
     }
     return state.refreshPromise;
   }
-  async function fetchTrackFile(track, range = null, retried = false, path = dropboxTrackPath(track)) {
+  async function fetchTrackFile(track, range = null, retried = false, path = dropboxTrackPath(track), signal) {
     const accessToken = await ensureAccessToken();
     const response = await fetch("https://content.dropboxapi.com/2/files/download", {
       method: range ? "GET" : "POST",
+      signal,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Dropbox-API-Arg": JSON.stringify({ path }).replace(/[\u007f-\uffff]/g, (character) =>
@@ -168,7 +171,7 @@
     });
     if (response.status === 401 && state.refreshToken && !retried) {
       await ensureAccessToken(true);
-      return fetchTrackFile(track, range, true, path);
+      return fetchTrackFile(track, range, true, path, signal);
     }
     if (response.status === 401) clearDropboxTokens();
     if (!response.ok) throw new Error(`Track metadata request failed (${response.status}).`);
@@ -893,6 +896,133 @@
     const now = Math.floor(Date.now() / 60000) * 60 - APPLE_EPOCH_OFFSET;
     return now - (cutoff?.period === "week" ? 7 : 30) * 86400;
   }
+  let offlinePlan;
+  let offlineCutoff;
+  let offlineTask;
+  let offlineDownload;
+  let offlineSaved = new Set();
+  let offlineRetryAt = Infinity;
+  let offlineStatus = { phase: "off", saved: 0, total: 0 };
+  const offlineMimeTypes = {
+    aac: "audio/aac", aif: "audio/aiff", aiff: "audio/aiff", alac: "audio/mp4",
+    flac: "audio/flac", m4a: "audio/mp4", mp3: "audio/mpeg", mp4: "audio/mp4",
+    oga: "audio/ogg", ogg: "audio/ogg", opus: "audio/ogg", wav: "audio/wav", webm: "audio/webm"
+  };
+  const savedIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20h14M7 10l3 3 7-7"/></svg>';
+  $("#now-saved").innerHTML = savedIcon;
+  function offlineTrackKey(track) {
+    if (!track || !state.cloud || !state.libraryFolder) return null;
+    const { origin, id } = state.cloud;
+    const folder = state.libraryFolder;
+    return JSON.stringify([origin, id, folder.id || folder.path_lower, folder.path_lower, track.path]);
+  }
+  function isSavedOffline(track) {
+    return Boolean(offlinePlan?.enabled && offlineSaved.has(offlineTrackKey(track)));
+  }
+  function updateSavedIcons() {
+    els.tableBody.querySelectorAll(".track-saved").forEach((icon) => {
+      icon.hidden = !isSavedOffline(state.catalog.get(icon.closest(".track-row").dataset.trackId));
+    });
+    updatePlayerSavedIcon();
+  }
+  function updatePlayerSavedIcon() {
+    const icon = $("#now-saved");
+    const hidden = !isSavedOffline(state.current);
+    if (icon.hidden !== hidden) {
+      icon.hidden = hidden;
+      updateTitleMarquee();
+    }
+  }
+  function sendOfflineStatus() {
+    $("#settings-frame").contentWindow?.postMessage({ type: "flurb-offline-audio-status", ...offlineStatus }, location.origin);
+  }
+  function setOfflineStatus(phase, total, track) {
+    offlineStatus = { phase, saved: offlineSaved.size, total, title: track ? trackTitle(track) : "" };
+    sendOfflineStatus();
+  }
+  function configureOfflineAudio() {
+    const enabled = localStorage.getItem(FlurbOfflineAudio.preference) === "on";
+    const connected = Boolean(state.cloud && state.token && state.libraryFolder);
+    const waiting = enabled && connected && !state.cloudSnapshot;
+    offlineCutoff = recentCutoff();
+    const tracks = new Map();
+    if (enabled && connected && !waiting) {
+      for (const track of [...state.catalog.values()].filter((track) => addedDate(track) >= offlineCutoff).sort(recentlyAdded)) {
+        tracks.set(offlineTrackKey(track), track);
+      }
+    }
+    const online = navigator.onLine;
+    const previous = offlinePlan;
+    if (previous?.enabled === enabled && previous.connected === connected && previous.waiting === waiting &&
+        previous.online === online && previous.tracks.size === tracks.size &&
+        [...tracks.keys()].every((key) => previous.tracks.has(key)) && Date.now() < offlineRetryAt) return;
+    offlinePlan = { enabled, connected, waiting, tracks, online };
+    if (offlineDownload && (!tracks.has(offlineDownload.key) || !offlinePlan.online)) offlineDownload.controller.abort();
+    for (const key of offlineSaved) {
+      if (!tracks.has(key)) {
+        offlineSaved.delete(key);
+        state.playbackLinks.delete(`saved:${key}`);
+      }
+    }
+    updateSavedIcons();
+    runOfflineAudio();
+  }
+  function runOfflineAudio() {
+    if (offlineTask) return;
+    let handled;
+    offlineTask = (async () => {
+      while (handled !== offlinePlan) {
+        handled = offlinePlan;
+        const { enabled, connected, waiting, tracks, online } = handled;
+        offlineRetryAt = Infinity;
+        if (waiting) { setOfflineStatus("waiting", 0); continue; }
+        try {
+          const saved = await FlurbOfflineAudio.keep(tracks);
+          if (handled !== offlinePlan) continue;
+          offlineSaved = saved;
+          updateSavedIcons();
+          let phase = !enabled ? "off" : !connected ? "connect" : !online && saved.size < tracks.size ? "offline" : "ready";
+          if (enabled && connected && online) {
+            for (const [key, track] of tracks) {
+              if (handled !== offlinePlan) break;
+              if (saved.has(key)) continue;
+              const controller = new AbortController();
+              offlineDownload = { key, controller };
+              setOfflineStatus("downloading", tracks.size, track);
+              try {
+                const response = await fetchTrackFile(track, null, false, dropboxTrackPath(track), controller.signal);
+                const downloaded = await response.blob();
+                if (controller.signal.aborted || !offlinePlan.tracks.has(key)) continue;
+                if (!downloaded.size) throw new Error("Dropbox returned an empty file.");
+                const extension = track.name.split(".").at(-1).toLowerCase();
+                const blob = downloaded.type.startsWith("audio/") || !offlineMimeTypes[extension]
+                  ? downloaded : downloaded.slice(0, downloaded.size, offlineMimeTypes[extension]);
+                await FlurbOfflineAudio.put(key, blob);
+                if (offlinePlan.tracks.has(key)) {
+                  saved.add(key);
+                  updateSavedIcons();
+                }
+              } catch (error) {
+                if (controller.signal.aborted) continue;
+                phase = error?.name === "QuotaExceededError" ? "storage" : "retry";
+                if (phase === "storage") break;
+              } finally {
+                offlineDownload = null;
+              }
+            }
+          }
+          if (handled !== offlinePlan) continue;
+          if (phase === "retry") offlineRetryAt = Date.now() + 60000;
+          setOfflineStatus(phase, tracks.size);
+        } catch (_) {
+          if (handled === offlinePlan) setOfflineStatus("error", tracks.size);
+        }
+      }
+    })().finally(() => {
+      offlineTask = null;
+      if (handled !== offlinePlan) runOfflineAudio();
+    });
+  }
   const recentlyAdded = (a, b) => addedDate(b) - addedDate(a);
   const artistName = (track) => track.album_artist?.trim() || track.artist?.trim() || "Unknown Artist";
   const artistPath = (track) => `${CATALOG_ROOT}/${encodeURIComponent(artistName(track))}`;
@@ -967,6 +1097,7 @@
       else setPlayerMetadata(state.current);
       updatePlayerArtwork(state.current);
     }
+    configureOfflineAudio();
     prepareNextTrack();
     refreshCatalogView(false);
     scroll.scrollTo({ top: offset, behavior: "instant" });
@@ -1076,6 +1207,7 @@
   async function loadCloudConfig() {
     const config = FlurbCloud.readConfig();
     if (config?.origin === state.cloud?.origin && config?.id === state.cloud?.id) {
+      if (!offlinePlan) configureOfflineAudio();
       syncCloud();
       return;
     }
@@ -1095,6 +1227,7 @@
     state.catalogFolders = new Map();
     state.favorites = new Set();
     state.playlists = [];
+    configureOfflineAudio();
     refreshCatalogView();
     sendCloudStatus();
     if (!config) return;
@@ -1640,7 +1773,14 @@
       }
     });
     overflow.append(more, menu);
-    actions.append(favorite, overflow);
+    const saved = document.createElement("span");
+    saved.className = "track-saved";
+    saved.setAttribute("role", "img");
+    saved.setAttribute("aria-label", "Saved offline");
+    saved.title = "Saved offline";
+    saved.innerHTML = savedIcon;
+    saved.hidden = !isSavedOffline(track);
+    actions.append(saved, favorite, overflow);
     row.append(artworkShell, copy, actions);
     updateTrackRowTitle(row, track);
     row.addEventListener("click", (event) => {
@@ -1699,19 +1839,26 @@
   }
   function playbackLink(track, refresh = false) {
     const path = dropboxTrackPath(track);
+    const localKey = offlineTrackKey(track);
+    const local = isSavedOffline(track) || (!navigator.onLine && offlinePlan?.tracks.has(localKey));
+    const key = local ? `saved:${localKey}` : path;
     const links = state.playbackLinks;
-    const previous = links.get(path);
+    const previous = links.get(key);
     if (!refresh && previous && previous.expires > Date.now()) return previous;
     const entry = { expires: Date.now() + 2 * 60 * 60 * 1000 };
-    entry.pending = dropbox("/files/get_temporary_link", { path }).then(({ link }) => {
-      entry.link = link;
-      return link;
-    }).catch((error) => {
-      if (links.get(path) === entry) links.delete(path);
+    entry.pending = (async () => {
+      if (local) {
+        entry.blob = await FlurbOfflineAudio.get(localKey).catch(() => null);
+        if (entry.blob) { entry.expires = Infinity; return; }
+      }
+      if (!navigator.onLine) throw new Error("This track hasn’t been saved for offline playback.");
+      entry.link = (await dropbox("/files/get_temporary_link", { path })).link;
+    })().catch((error) => {
+      if (links.get(key) === entry) links.delete(key);
       throw error;
     });
-    links.delete(path);
-    links.set(path, entry);
+    links.delete(key);
+    links.set(key, entry);
     if (links.size > 32) links.delete(links.keys().next().value);
     return entry;
   }
@@ -1722,7 +1869,7 @@
     const ids = [next, ...queue.order.slice(queue.position + 2, queue.position + 3)];
     for (const id of ids) {
       const track = state.catalog.get(id);
-      if (track) playbackLink(track).pending.catch(() => {});
+      if (track && (navigator.onLine || isSavedOffline(track))) playbackLink(track).pending.catch(() => {});
     }
   }
   els.tableBody.addEventListener("pointerdown", (event) => {
@@ -1738,8 +1885,14 @@
   }
   function startPlayback({ selected = null } = {}) {
     if (!state.token || !state.libraryFolder) return openSettings();
-    const tracks = Array.from(contextTracks(), (track) => track.id);
-    if (!tracks.length) return toast("No playable tracks in this view");
+    if (selected && !navigator.onLine && !isSavedOffline(state.catalog.get(selected))) {
+      return toast("This track hasn’t been saved for offline playback");
+    }
+    const tracks = [];
+    for (const track of contextTracks()) {
+      if (navigator.onLine || isSavedOffline(track)) tracks.push(track.id);
+    }
+    if (!tracks.length) return toast(navigator.onLine ? "No playable tracks in this view" : "No saved tracks in this view");
     const queue = FlurbPlayback.create(tracks, { start: selected, shuffle: state.shuffle });
     queue.context = playbackContext();
     state.playback = queue;
@@ -1761,7 +1914,10 @@
   function playAudioSource(track, entry, position) {
     state.bufferingAudio = true;
     state.playbackPosition = position;
-    els.audio.src = entry.link;
+    const previousObjectURL = state.audioObjectURL;
+    state.audioObjectURL = entry.blob ? URL.createObjectURL(entry.blob) : null;
+    els.audio.src = state.audioObjectURL || entry.link;
+    if (previousObjectURL) URL.revokeObjectURL(previousObjectURL);
     state.audioTrackId = track.id;
     state.audioLinkExpires = entry.expires;
     if (position > 0) els.audio.currentTime = position;
@@ -1781,7 +1937,7 @@
     try {
       const entry = playbackLink(track, refreshLink);
       // Use the prepared link on the ended callback's call stack.
-      const started = entry.link ? playAudioSource(track, entry, position) : entry.pending.then(() => {
+      const started = entry.link || entry.blob ? playAudioSource(track, entry, position) : entry.pending.then(() => {
         if (requestId === state.playRequest) return playAudioSource(track, entry, position);
       });
       const result = started.catch((error) => error);
@@ -1794,7 +1950,7 @@
       const error = await result;
       if (requestId !== state.playRequest) return;
       if (error) {
-        if (!entry.link || refreshLink || error.name === "NotAllowedError") throw error;
+        if ((!entry.link && !entry.blob) || refreshLink || error.name === "NotAllowedError") throw error;
         const replacement = playbackLink(track, true);
         await replacement.pending;
         if (requestId !== state.playRequest) return;
@@ -1864,7 +2020,8 @@
     if (!queue) return false;
     for (let remaining = queue.tracks.length; remaining > 0; remaining -= 1) {
       if (!FlurbPlayback.step(queue, direction, state.repeat === "all")) return false;
-      if (state.catalog.has(FlurbPlayback.current(queue))) {
+      const track = state.catalog.get(FlurbPlayback.current(queue));
+      if (track && (navigator.onLine || isSavedOffline(track))) {
         playQueuedTrack();
         return true;
       }
@@ -1903,6 +2060,7 @@
     if (navigator.mediaSession) navigator.mediaSession.playbackState = !hasTrack ? "none" : els.audio.paused ? "paused" : "playing";
   }
   function updateFavoriteButton() {
+    updatePlayerSavedIcon();
     const active = Boolean(state.current && state.favorites.has(state.current.id));
     els.nowFavorite.disabled = !state.current || !state.catalog.has(state.current.id);
     els.nowFavorite.classList.toggle("active", active);
@@ -2171,6 +2329,8 @@
       els.audio.pause();
       els.audio.removeAttribute("src");
       els.audio.load();
+      if (state.audioObjectURL) URL.revokeObjectURL(state.audioObjectURL);
+      state.audioObjectURL = null;
       closeArtworkViewer();
       els.nowTitle.textContent = "Nothing playing yet";
       els.nowAlbum.textContent = "";
@@ -2187,6 +2347,7 @@
     for (const link of state.artworkLinks.values()) URL.revokeObjectURL(link);
     state.artworkLinks.clear();
     updatePlayerArtwork(state.current);
+    configureOfflineAudio();
     renderTracks();
   }
   window.addEventListener("message", (event) => {
@@ -2198,18 +2359,27 @@
     if (event.data?.type === "flurb-dropbox-session-changed") refreshDropboxFolder();
     if (event.data?.type === "flurb-turso-changed") loadCloudConfig();
     if (event.data?.type === "flurb-turso-status-request") sendCloudStatus();
+    if (event.data?.type === "flurb-offline-audio-request") sendOfflineStatus();
+    if (event.data?.type === "flurb-offline-audio-changed" &&
+        offlinePlan?.enabled !== (localStorage.getItem(FlurbOfflineAudio.preference) === "on")) configureOfflineAudio();
   });
   window.addEventListener("storage", (event) => {
     if (event.key === "flurb.turso.connection") loadCloudConfig();
+    if (event.key === FlurbOfflineAudio.preference &&
+        offlinePlan?.enabled !== (event.newValue === "on")) configureOfflineAudio();
     if (event.key === "flurb.dropbox.libraryFolder" || event.key === DROPBOX_SIGNED_OUT) refreshDropboxFolder();
   });
   window.addEventListener("online", () => {
+    configureOfflineAudio();
     syncCloud();
     state.recentArtworkPreload = null;
     pumpArtworkQueue();
     checkVisibleArtwork();
   });
-  window.addEventListener("offline", syncCloud);
+  window.addEventListener("offline", () => {
+    configureOfflineAudio();
+    syncCloud();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     syncCloud();
@@ -2217,6 +2387,7 @@
   });
   setInterval(() => {
     refreshRecentCutoff();
+    if ((offlinePlan?.enabled && offlineCutoff !== recentCutoff()) || Date.now() >= offlineRetryAt) configureOfflineAudio();
     syncCloud();
   }, 5000);
   setInterval(checkVisibleArtwork, ARTWORK_REVISION_INTERVAL);

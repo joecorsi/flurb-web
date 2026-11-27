@@ -295,6 +295,59 @@
   const notifyPlayer = (type) => {
     if (window.parent !== window) window.parent.postMessage({ type }, location.origin);
   };
+  const offlinePreference = window.FlurbOfflineAudio.preference;
+  const offlineToggle = document.querySelector("#offline-audio-toggle");
+  const offlineProgress = document.querySelector("#offline-audio-progress");
+  const offlineCount = document.querySelector("#offline-audio-count");
+  const offlineBar = document.querySelector("#offline-audio-bar");
+  const offlineStatus = document.querySelector("#offline-audio-status");
+  function renderOfflineAudio({ phase, saved, total, title } = {}) {
+    const enabled = localStorage.getItem(offlinePreference) === "on";
+    offlineToggle.textContent = enabled ? "On" : "Off";
+    offlineToggle.setAttribute("aria-checked", String(enabled));
+    offlineToggle.classList.toggle("is-connected", enabled);
+    offlineProgress.hidden = !enabled || !(total > 0);
+    offlineBar.max = total || 1;
+    offlineBar.value = saved || 0;
+    offlineCount.textContent = `${saved || 0} of ${total || 0} tracks saved`;
+    const messages = {
+      waiting: "Loading Recently Added…",
+      connect: "Connect Turso and select a Dropbox music folder to download tracks.",
+      downloading: `Downloading ${title || "track"}…`,
+      ready: total ? "Available offline on this device." : "No tracks in Recently Added.",
+      offline: "Waiting for an internet connection.",
+      retry: "Some downloads failed. Flurb will retry.",
+      storage: "Device storage is full. Tracks already saved are available offline.",
+      error: "Flurb couldn’t access this device’s offline storage."
+    };
+    offlineStatus.textContent = enabled ? messages[phase] || (window.parent === window ? "Open the player to download tracks." : "Checking downloads…") : "";
+    offlineStatus.classList.toggle("is-error", enabled && (phase === "storage" || phase === "error"));
+  }
+  offlineToggle.addEventListener("click", () => {
+    const enabled = localStorage.getItem(offlinePreference) !== "on";
+    localStorage.setItem(offlinePreference, enabled ? "on" : "off");
+    renderOfflineAudio();
+    if (!enabled && window.parent === window) {
+      window.FlurbOfflineAudio.keep(new Set()).catch(() => {
+        offlineStatus.textContent = "Flurb couldn’t remove the saved files.";
+        offlineStatus.classList.add("is-error");
+      });
+    }
+    notifyPlayer("flurb-offline-audio-changed");
+  });
+  window.addEventListener("message", (event) => {
+    if (event.origin === location.origin && event.source === window.parent && event.data?.type === "flurb-offline-audio-status") {
+      renderOfflineAudio(event.data);
+    }
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key !== offlinePreference) return;
+    renderOfflineAudio();
+    notifyPlayer("flurb-offline-audio-request");
+  });
+  renderOfflineAudio();
+  notifyPlayer("flurb-offline-audio-request");
+
   function updateTursoForm() {
     const config = cloud.readConfig();
     tursoUrl.value = config?.origin || "";

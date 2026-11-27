@@ -7,9 +7,10 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=row-selection-1">
+  <link rel="stylesheet" href="./styles.css?v=offline-audio-1">
   <script src="./turso-sync.js?v=turso-details-1" defer></script>
-  <script src="./settings.js?v=turso-details-1" defer></script>
+  <script src="./offline-audio.js?v=1" defer></script>
+  <script src="./settings.js?v=offline-audio-1" defer></script>
 </head>
 <body class="settings-page">
   <main class="settings-shell">
@@ -50,6 +51,18 @@
         <div><dt>Last synced</dt><dd id="turso-last-sync">Not yet</dd></div>
         <div><dt>Queued edits</dt><dd id="turso-queued-edits">—</dd></div>
       </dl>
+    </section>
+    <section class="settings-panel" aria-labelledby="offline-audio-heading">
+      <header class="settings-panel-header">
+        <h1 id="offline-audio-heading">Offline playback</h1>
+        <button class="settings-connect" id="offline-audio-toggle" type="button" role="switch" aria-labelledby="offline-audio-heading" aria-checked="false">Off</button>
+      </header>
+      <p class="settings-offline-description">Save Recently Added tracks on this device.</p>
+      <div class="settings-offline-progress" id="offline-audio-progress" hidden>
+        <label for="offline-audio-bar" id="offline-audio-count"></label>
+        <progress id="offline-audio-bar" value="0" max="1"></progress>
+      </div>
+      <p class="settings-status" id="offline-audio-status" role="status"></p>
     </section>
   </main>
 </body>
