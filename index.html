@@ -9,11 +9,11 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=artwork-cache-1">
+  <link rel="stylesheet" href="./styles.css?v=new-playlist-1">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu" crossorigin="anonymous" defer></script>
   <script src="./turso-sync.js?v=2" defer></script>
   <script src="./artwork-cache.js?v=1" defer></script>
-  <script src="./app.js?v=scoped-search-1" defer></script>
+  <script src="./app.js?v=new-playlist-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -93,6 +93,22 @@
         <p class="playlist-picker-message" id="playlist-picker-message" role="status"></p>
         <button class="playlist-picker-create" id="playlist-picker-create" type="button">+ New playlist…</button>
       </div>
+    </dialog>
+    <dialog class="playlist-picker new-playlist" id="new-playlist" aria-labelledby="new-playlist-title">
+      <form id="new-playlist-form">
+        <header class="playlist-picker-header">
+          <h2 id="new-playlist-title">New playlist</h2>
+        </header>
+        <div class="new-playlist-fields">
+          <label for="new-playlist-name">Playlist name</label>
+          <input id="new-playlist-name" type="text" autocomplete="off" required autofocus>
+          <p class="playlist-picker-message is-error" id="new-playlist-message" role="status"></p>
+          <div class="new-playlist-actions">
+            <button type="button" id="new-playlist-cancel">Cancel</button>
+            <button type="submit" id="new-playlist-submit">Create</button>
+          </div>
+        </div>
+      </form>
     </dialog>
     <audio id="audio" preload="metadata"></audio>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

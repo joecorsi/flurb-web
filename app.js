@@ -28,7 +28,10 @@
     toast: $("#toast"), settingsLink: $("#settings-link"),
     playlistPicker: $("#playlist-picker"), playlistPickerList: $("#playlist-picker-list"),
     playlistPickerMessage: $("#playlist-picker-message"), playlistPickerClose: $("#playlist-picker-close"),
-    playlistPickerCreate: $("#playlist-picker-create")
+    playlistPickerCreate: $("#playlist-picker-create"),
+    newPlaylist: $("#new-playlist"), newPlaylistForm: $("#new-playlist-form"),
+    newPlaylistName: $("#new-playlist-name"), newPlaylistCancel: $("#new-playlist-cancel"),
+    newPlaylistSubmit: $("#new-playlist-submit"), newPlaylistMessage: $("#new-playlist-message")
   };
   const state = {
     token: readDropboxToken(),
@@ -1091,7 +1094,11 @@
       [trackTitle(track), track.name, playerArtist(track)].some((name) => name.toLocaleLowerCase().includes(query)));
   }
   function visibleTracks() {
-    if (state.viewMode === "favorites") return [...state.favorites].map((id) => state.catalog.get(id));
+    if (state.viewMode === "favorites") {
+      const compare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
+      return [...state.favorites].map((id) => state.catalog.get(id)).sort((a, b) =>
+        compare(playerArtist(a), playerArtist(b)) || compare(trackTitle(a), trackTitle(b)));
+    }
     if (state.viewMode === "recent") {
       return state.folderPath === CATALOG_ROOT
         ? [...state.catalog.values()].sort(recentlyAdded)
@@ -1301,7 +1308,7 @@
       : state.folderPath === CATALOG_ROOT;
     if (state.viewMode === "playlists" && !state.activePlaylistId) {
       const create = document.createElement("button"); create.type = "button"; create.className = "library-row artist-row playlist-create"; create.textContent = "+ New playlist";
-      create.addEventListener("click", () => createPlaylist()); els.tableBody.append(create);
+      create.addEventListener("click", () => openNewPlaylist()); els.tableBody.append(create);
       const playlists = state.playlists.filter((playlist) => !query || playlist.name.toLocaleLowerCase().includes(query)).slice().sort((a, b) => a.name.localeCompare(b.name));
       const playlistRows = playlists.map((item) => ({ kind: "playlist", item }));
       const renderedPlaylists = groupRowsByLetter(playlistRows, false);
@@ -1320,7 +1327,7 @@
       ...folders.map((folder) => ({ kind: "folder", item: folder })),
       ...tracks.map((track) => ({ kind: "track", item: track }))
     ];
-    if (state.viewMode !== "playlists" && state.viewMode !== "recent") rows.sort((a, b) =>
+    if (state.viewMode === "library") rows.sort((a, b) =>
       (a.kind === "track" ? trackTitle(a.item) : a.item.name).localeCompare(
         b.kind === "track" ? trackTitle(b.item) : b.item.name, undefined, { numeric: true, sensitivity: "base" }));
 
@@ -1347,22 +1354,32 @@
     return { kind: "metadata", key: `playlist_modified_v1:${id}`, patch: { value: String(now) } };
   }
 
-  async function createPlaylist(track = null) {
-    const name = window.prompt("Playlist name")?.trim();
-    if (!name) return;
+  let newPlaylistTrack = null;
+  let newPlaylistBusy = false;
+
+  function openNewPlaylist(track = null) {
+    newPlaylistTrack = track;
+    els.newPlaylistForm.reset();
+    els.newPlaylistMessage.textContent = "";
+    els.newPlaylist.showModal();
+  }
+  async function createPlaylist(name, track) {
     const id = crypto.randomUUID();
     const now = appleTimestamp();
+    let created = false;
     const saved = await editCloud((cache) => {
       if (track && !cache.tracks.has(track.id)) return [];
+      created = true;
       return [
         { kind: "playlist", key: id, patch: { id, name, smart_rule: null, manual_order: null, created_at: now } },
         { kind: "members", key: id, patch: { tracks: track ? [track.id] : [] } },
         playlistModified(id, now)
       ];
     });
-    if (!saved) return;
+    if (!saved || !created) return false;
     if (track) toast(`Added to ${name}`);
     else if (state.playlists.some((playlist) => playlist.id === id)) selectPlaylistView(id);
+    return true;
   }
   function selectPlaylistView(id) {
     if (id === state.activePlaylistId) return;
@@ -1827,8 +1844,32 @@
     if (!playlistPickerTrack || playlistPickerBusy) return;
     const track = playlistPickerTrack;
     els.playlistPicker.close();
-    createPlaylist(track);
+    openNewPlaylist(track);
   });
+  els.newPlaylistForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (newPlaylistBusy) return;
+    const name = els.newPlaylistName.value.trim();
+    if (!name) {
+      els.newPlaylistMessage.textContent = "Enter a playlist name.";
+      els.newPlaylistName.focus();
+      return;
+    }
+    newPlaylistBusy = true;
+    els.newPlaylistName.readOnly = true;
+    els.newPlaylistSubmit.disabled = els.newPlaylistCancel.disabled = true;
+    els.newPlaylistMessage.textContent = "";
+    try {
+      if (await createPlaylist(name, newPlaylistTrack)) els.newPlaylist.close();
+      else els.newPlaylistMessage.textContent = "Could not create the playlist. Try again.";
+    } finally {
+      newPlaylistBusy = false;
+      els.newPlaylistName.readOnly = false;
+      els.newPlaylistSubmit.disabled = els.newPlaylistCancel.disabled = false;
+    }
+  });
+  els.newPlaylistCancel.addEventListener("click", () => els.newPlaylist.close());
+  els.newPlaylist.addEventListener("cancel", (event) => { if (newPlaylistBusy) event.preventDefault(); });
   els.settingsLink.addEventListener("click", (event) => { event.preventDefault(); openSettings(); });
   els.home.addEventListener("click", goHomeLibrary);
   els.settingsButton.addEventListener("click", openSettings);
