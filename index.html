@@ -9,7 +9,7 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=playlist-picker-1">
+  <link rel="stylesheet" href="./styles.css?v=striped-rows-1">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu" crossorigin="anonymous" defer></script>
   <script src="./turso-sync.js?v=1" defer></script>
   <script src="./app.js?v=playlist-picker-1" defer></script>
@@ -79,14 +79,14 @@
       <button class="settings-scrim" type="button" aria-label="Close settings" data-close-settings></button>
       <section class="settings-dialog" role="dialog" aria-modal="true" aria-label="Flurb settings">
         <header class="settings-dialog-header"><strong>Settings</strong><button class="icon-button settings-close" id="settings-close" type="button" aria-label="Close settings"><i data-lucide="x" aria-hidden="true"></i></button></header>
-        <iframe class="settings-frame" id="settings-frame" src="./settings.html?embedded=1&v=playlist-picker-1" title="Flurb settings"></iframe>
+        <iframe class="settings-frame" id="settings-frame" src="./settings.html?embedded=1&v=striped-rows-1" title="Flurb settings"></iframe>
       </section>
     </div>
     <dialog class="playlist-picker" id="playlist-picker" aria-labelledby="playlist-picker-title">
       <div class="playlist-picker-body">
         <header class="playlist-picker-header">
-          <h2 id="playlist-picker-title">Add to playlist</h2>
-          <button class="icon-button" id="playlist-picker-close" type="button" aria-label="Close playlist picker" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
+          <h2 id="playlist-picker-title" tabindex="-1" autofocus>Add to playlist</h2>
+          <button class="icon-button" id="playlist-picker-close" type="button" aria-label="Close playlist picker"><i data-lucide="x" aria-hidden="true"></i></button>
         </header>
         <div class="playlist-picker-list" id="playlist-picker-list"></div>
         <p class="playlist-picker-message" id="playlist-picker-message" role="status"></p>

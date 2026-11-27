@@ -906,7 +906,7 @@ body.is-embedded .settings-back { display: none; }
   outline: none !important;
   box-shadow: none !important;
   border-color: transparent !important;
-  background: transparent !important;
+  background: var(--row-fill, transparent) !important;
 }
 .track-row.is-playing .track-name { color: #e6e9df; }
 
@@ -1493,3 +1493,53 @@ img { -webkit-user-drag: none; }
 .playlist-picker-message { margin: 0; padding: .55rem 10px; color: #a0a1a4; font-size: .8rem; }
 .playlist-picker-message:empty { display: none; }
 .playlist-picker-message.is-error { color: #f1a091; }
+
+
+/* Shared with Flurb Rust's track table. */
+:root {
+  --row-first: #1e1e1f;
+  --row-alternate: #2b2b2c;
+}
+
+.track-rows > .library-row:not(.library-letter-row, .playlist-create) {
+  --row-fill: var(--row-first);
+}
+.track-rows > :nth-child(even of .library-row:not(.library-letter-row, .playlist-create)) {
+  --row-fill: var(--row-alternate);
+}
+.track-rows > .library-row:not(.library-letter-row, .playlist-create)::before {
+  position: absolute;
+  inset: 0 100% 0 -10px;
+  background: var(--row-fill);
+  content: "";
+  pointer-events: none;
+}
+
+:is(.mode-menu, .track-overflow-menu, .playlist-picker-list, .settings-folders) > button,
+.settings-account > :is(div, label) {
+  background-color: var(--row-first);
+}
+:is(.mode-menu, .track-overflow-menu, .playlist-picker-list, .settings-folders) > button:nth-child(even),
+.settings-account > :is(div, label):nth-child(even) {
+  background-color: var(--row-alternate);
+}
+.settings-account > :is(div, label) { padding: .45rem .55rem; }
+.mode-menu > button[aria-checked="true"] { background-color: #39393b; }
+@media (hover: hover) {
+  :is(.mode-menu, .track-overflow-menu, .playlist-picker-list, .settings-folders) > button:hover {
+    background-color: #39393b;
+  }
+}
+
+:is(.track-more, #playlist-picker-close) {
+  border-radius: 4px;
+  outline: none;
+  box-shadow: none;
+  color: #bcbcbc;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+:is(.track-more, #playlist-picker-close):focus-visible {
+  outline: 1px solid #fff;
+  outline-offset: -2px;
+}
