@@ -1306,7 +1306,9 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
   font: 500 .62rem/1 var(--mono);
   cursor: pointer;
 }
-.shuffle-library:disabled { opacity: .55; cursor: wait; }
+.shuffle-library[aria-pressed="true"] { color: #000; background: #fff; }
+.shuffle-library:disabled { cursor: wait; }
+.track-artwork-shell.playing-speaker .artwork-placeholder { color: #fff; }
 
 :root { --player-surface: #1c1e20; }
 .search-box, .player { background: var(--player-surface); }

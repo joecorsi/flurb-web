@@ -626,6 +626,7 @@
     state.playRequest += 1;
     state.libraryShuffleRequest += 1;
     state.libraryQueue = null;
+    updateLibraryShuffleButton();
     els.audio.pause();
     els.audio.removeAttribute("src");
     els.audio.load();
@@ -960,26 +961,34 @@
     const row = document.createElement("div");
     row.setAttribute("role", "listitem");
     row.setAttribute("tabindex", "0");
-    row.setAttribute("aria-label", `Play ${track.name.replace(/\.[^.]+$/, "")}`);
-    row.className = `library-row track-row${state.current?.id === track.id ? " is-playing" : ""}`;
+    const isCurrent = state.current?.id === track.id;
+    const isPlaying = isCurrent && !els.audio.paused && !els.audio.ended;
+    const trackName = track.name.replace(/\.[^.]+$/, "");
+    row.setAttribute("aria-label", `${isPlaying ? "Now playing" : "Play"} ${trackName}`);
+    row.className = `library-row track-row${isCurrent ? " is-playing" : ""}`;
     const artworkShell = document.createElement("span");
     artworkShell.className = "track-artwork-shell";
-    const artwork = document.createElement("img");
-    artwork.className = "track-artwork";
-    artwork.alt = "";
-    artwork.width = 44;
-    artwork.height = 44;
     const placeholder = document.createElement("i");
     placeholder.className = "artwork-placeholder";
-    placeholder.setAttribute("data-lucide", "music-2");
+    placeholder.setAttribute("data-lucide", isPlaying ? "volume-2" : "music-2");
     placeholder.setAttribute("aria-hidden", "true");
-    artworkShell.append(artwork, placeholder);
-    if (hasId3ArtworkSupport(track)) registerTrackArtwork(artwork, track);
+    if (isPlaying) {
+      artworkShell.classList.add("playing-speaker");
+      artworkShell.append(placeholder);
+    } else {
+      const artwork = document.createElement("img");
+      artwork.className = "track-artwork";
+      artwork.alt = "";
+      artwork.width = 44;
+      artwork.height = 44;
+      artworkShell.append(artwork, placeholder);
+      if (hasId3ArtworkSupport(track)) registerTrackArtwork(artwork, track);
+    }
     const copy = document.createElement("div");
     copy.className = "track-copy";
     const title = document.createElement("span");
     title.className = "track-name";
-    title.textContent = track.name.replace(/\.[^.]+$/, "");
+    title.textContent = trackName;
     const meta = document.createElement("span");
     meta.className = "track-meta";
     meta.textContent = playerArtist(track);
@@ -1025,6 +1034,7 @@
     if (!isInsideLibrary(track)) return showNotice("That track is outside the selected Flurb folder.", "error");
     state.libraryShuffleRequest += 1;
     state.libraryQueue = libraryQueue;
+    updateLibraryShuffleButton();
     const requestId = ++state.playRequest;
     els.audio.pause();
     state.loadingTrack = true;
@@ -1062,24 +1072,52 @@
     els.shuffle.classList.toggle("active", enabled);
     els.shuffle.setAttribute("aria-label", `Shuffle ${enabled ? "on" : "off"}`);
     els.shuffle.setAttribute("aria-pressed", String(enabled));
+    updateLibraryShuffleButton();
+  }
+  function updateLibraryShuffleButton() {
+    els.shuffleLibrary.setAttribute("aria-pressed", String(Boolean(state.shuffle && state.libraryQueue)));
+  }
+  async function listLibraryTracks(root, isCurrentRequest) {
+    const tracks = new Map();
+    const collect = (entries) => {
+      for (const entry of entries) {
+        if (isAudio(entry) && isInsideLibrary(entry)) tracks.set(entry.id, entry);
+      }
+    };
+    try {
+      collect(await listFolder(root.path_lower, true));
+    } catch (_) {
+      // Large libraries can fail a recursive Dropbox request while one-level listings still work.
+      const folders = [root.path_lower];
+      for (let index = 0; index < folders.length && isCurrentRequest(); index += 1) {
+        const entries = await listFolder(folders[index]);
+        collect(entries);
+        for (const entry of entries) {
+          if (isFolder(entry) && isInsideLibrary(entry)) folders.push(entry.path_lower);
+        }
+      }
+    }
+    return [...tracks.values()];
   }
   async function shuffleLibrary() {
     const root = state.libraryFolder;
     if (!root || els.shuffleLibrary.hidden) return;
     const request = ++state.libraryShuffleRequest;
+    const isCurrentRequest = () => request === state.libraryShuffleRequest && state.libraryFolder?.id === root.id;
     els.shuffleLibrary.disabled = true;
+    els.shuffleLibrary.setAttribute("aria-busy", "true");
     try {
-      const entries = await listFolder(root.path_lower, true);
-      if (request !== state.libraryShuffleRequest || state.libraryFolder?.id !== root.id) return;
-      const tracks = entries.filter((entry) => isAudio(entry) && isInsideLibrary(entry));
+      const tracks = state.libraryQueue || await listLibraryTracks(root, isCurrentRequest);
+      if (!isCurrentRequest()) return;
       if (!tracks.length) return toast("No playable tracks in this library");
       setShuffle(true);
       const track = tracks[Math.floor(Math.random() * tracks.length)];
       await playTrack(track, tracks);
     } catch (error) {
-      if (request === state.libraryShuffleRequest) showNotice(friendlyError(error), "error");
+      if (isCurrentRequest()) showNotice(`Could not load the library for shuffle. ${friendlyError(error)}`, "error");
     } finally {
       els.shuffleLibrary.disabled = false;
+      els.shuffleLibrary.removeAttribute("aria-busy");
     }
   }
   function playNext(direction = 1) {
@@ -1388,7 +1426,10 @@
     else {
       const playlist = state.libraryQueue || visibleTracks();
       if (state.repeat === "all" || state.shuffle || playlist.findIndex((t) => t.id === state.current?.id) < playlist.length - 1) playNext(1);
-      else updateTransport();
+      else {
+        updateTransport();
+        renderTracks();
+      }
     }
   });
   els.audio.addEventListener("error", () => {
