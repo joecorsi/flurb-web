@@ -5,8 +5,9 @@
   const DROPBOX_SIGNED_OUT = "flurb.dropbox.signedOutAt";
   const readDropboxToken = () => localStorage.getItem(DROPBOX_SIGNED_OUT) ? ""
     : localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
-  const { FlurbCloud } = window;
+  const { FlurbCloud, FlurbArtworkCache } = window;
   const ARTWORK_HEADER_BYTES = 64 * 1024;
+  const ARTWORK_REVISION_INTERVAL = 60000;
   const appleTimestamp = () => Date.now() / 1000 - 978307200;
   const $ = (selector) => document.querySelector(selector);
   function renderLucideIcons(root = document) {
@@ -48,6 +49,8 @@
     folderHistory: [],
     artworkLinks: new Map(),
     completedMetadata: new Set(),
+    artworkCheckedAt: new Map(),
+    artworkRechecks: new Set(),
     artworkLoading: new Set(),
     artworkElements: new Map(),
     artworkObserver: null,
@@ -564,7 +567,8 @@
     }
     return null;
   }
-  function setArtworkImage(image, link) {
+  function setArtworkImage(image, link, trackId) {
+    image._flurbArtworkId = trackId;
     image.src = link;
     image.classList.add("has-artwork");
     image.parentElement?.classList.add("has-artwork");
@@ -575,28 +579,31 @@
     if (!elements) state.artworkElements.set(track.id, elements = new Set());
     elements.add(image);
     const cached = state.artworkLinks.get(track.id);
-    if (cached) {
-      setArtworkImage(image, cached);
-      return;
-    }
+    if (cached) setArtworkImage(image, cached, track.id);
     if (!state.artworkObserver && "IntersectionObserver" in window) {
       state.artworkObserver = new IntersectionObserver((observations) => {
         observations.forEach((observation) => {
           if (!observation.isIntersecting) return;
           state.artworkObserver.unobserve(observation.target);
-          queueTrackArtwork(observation.target._flurbTrack, true);
+          const image = observation.target;
+          showCachedArtwork(image).then((track) => {
+            if (image.isConnected && track) {
+              queueTrackArtwork(track, true, state.completedMetadata.has(track.id) && artworkCheckDue(track.id));
+            }
+          });
         });
       }, { rootMargin: "220px 0px" });
     }
     if (state.artworkObserver) state.artworkObserver.observe(image);
     else queueTrackArtwork(track);
   }
-  function queueTrackArtwork(track, prioritize = false) {
+  function queueTrackArtwork(track, prioritize = false, recheck = false) {
     if (!track || !supportsArtwork(track) || !state.token || !state.libraryFolder) return;
     const key = track.id;
-    if (state.completedMetadata.has(key)) return;
+    if (state.completedMetadata.has(key) && !recheck) return;
     const queue = state.artworkQueue;
     if (state.artworkLoading.has(key)) {
+      if (recheck) state.artworkRechecks.add(key);
       if (prioritize) {
         const index = queue.findIndex((queued) => queued.id === key);
         if (index > 0) queue.unshift(queue.splice(index, 1)[0]);
@@ -647,13 +654,19 @@
         bytes[3] < 2 || bytes[3] > 4) return 0;
     return 10 + id3FrameSize(bytes, 6, 4);
   }
-  async function readMp3Artwork(track) {
-    const first = await fetchTrackFile(track, `bytes=0-${ARTWORK_HEADER_BYTES - 1}`);
+  function artworkRevision(response) {
+    try { return JSON.parse(response.headers.get("Dropbox-API-Result"))?.rev || null; }
+    catch (_) { return null; }
+  }
+  async function readMp3Artwork(track, path, onRevision) {
+    const first = await fetchTrackFile(track, `bytes=0-${ARTWORK_HEADER_BYTES - 1}`, false, path);
+    onRevision(artworkRevision(first));
     const buffer = await first.arrayBuffer();
     const cover = extractId3Artwork(buffer);
     const tagEnd = id3TagEnd(buffer);
     if (cover || first.status !== 206 || tagEnd <= buffer.byteLength) return cover;
-    const tag = await fetchTrackFile(track, `bytes=0-${tagEnd - 1}`);
+    const tag = await fetchTrackFile(track, `bytes=0-${tagEnd - 1}`, false, path);
+    onRevision(artworkRevision(tag));
     return extractId3Artwork(await tag.arrayBuffer());
   }
   function flacPicture(bytes) {
@@ -669,12 +682,13 @@
     if (!mime.startsWith("image/") || imageEnd <= imageStart || imageEnd > data.byteLength) return null;
     return { type: data.getUint32(0), cover: new Blob([bytes.subarray(imageStart, imageEnd)], { type: mime }) };
   }
-  async function readFlacArtwork(track) {
+  async function readFlacArtwork(track, path, onRevision) {
     let start = 0;
     let bytes = new Uint8Array();
     async function read(offset, length) {
       if (offset < start || offset + length > start + bytes.length) {
-        const response = await fetchTrackFile(track, `bytes=${offset}-${offset + Math.max(length, ARTWORK_HEADER_BYTES) - 1}`);
+        const response = await fetchTrackFile(track, `bytes=${offset}-${offset + Math.max(length, ARTWORK_HEADER_BYTES) - 1}`, false, path);
+        onRevision(artworkRevision(response));
         bytes = new Uint8Array(await response.arrayBuffer());
         start = response.status === 206 ? offset : 0;
       }
@@ -735,6 +749,98 @@
     }
     return null;
   }
+  function publishArtwork(track, cover) {
+    const previous = state.artworkLinks.get(track.id);
+    const link = cover ? URL.createObjectURL(cover) : null;
+    if (link) state.artworkLinks.set(track.id, link);
+    else state.artworkLinks.delete(track.id);
+    const bound = state.artworkElements.get(track.id);
+    const images = new Set(bound);
+    const albumImage = state.recentArtworkElements.get(recentAlbumPath(track));
+    if (albumImage && (!albumImage._flurbArtworkId || albumImage._flurbArtworkId === track.id)) images.add(albumImage);
+    for (const image of images) {
+      if (!image.isConnected || (image._flurbArtworkId && image._flurbArtworkId !== track.id)) continue;
+      if (link) {
+        state.artworkObserver?.unobserve(image);
+        setArtworkImage(image, link, track.id);
+      } else {
+        image._flurbArtworkId = null;
+        image.removeAttribute("src");
+        image.classList.remove("has-artwork");
+        image.parentElement?.classList.remove("has-artwork");
+        bound?.delete(image);
+        image._flurbArtworkMissing?.();
+      }
+    }
+    if (state.current?.id === track.id) {
+      updateMediaMetadata(state.current);
+      updatePlayerArtwork(state.current);
+    }
+    if (state.viewerTrack?.id === track.id) updateViewerArtwork(state.viewerTrack);
+    if (previous) URL.revokeObjectURL(previous);
+  }
+  function artworkCacheKey(folder, path) {
+    return JSON.stringify([folder.id, path]);
+  }
+  function artworkTrackIsCurrent(track, folder) {
+    return folder === state.libraryFolder && state.catalog.get(track.id)?.path === track.path;
+  }
+  async function showCachedArtwork(image) {
+    const folder = state.libraryFolder;
+    const initial = image._flurbTrack;
+    if (!folder?.path_lower || !initial || !supportsArtwork(initial)) return initial;
+    const shown = state.catalog.get(image._flurbArtworkId);
+    if (shown && state.artworkLinks.has(shown.id)) return shown;
+    const candidates = image._flurbArtworkCandidates || [initial];
+    const records = await Promise.all(candidates.map((track) =>
+      FlurbArtworkCache.get(artworkCacheKey(folder, dropboxTrackPath(track))).catch(() => null)));
+    if (!image.isConnected || folder !== state.libraryFolder) return null;
+    for (const [index, track] of candidates.entries()) {
+      if (!artworkTrackIsCurrent(track, folder)) continue;
+      if (!state.artworkLinks.has(track.id) && !state.completedMetadata.has(track.id) && records[index]?.cover) {
+        publishArtwork(track, records[index].cover);
+      }
+      const link = state.artworkLinks.get(track.id);
+      if (link) {
+        setArtworkImage(image, link, track.id);
+        return track;
+      }
+    }
+    return initial;
+  }
+  async function loadArtwork(track, folder) {
+    const path = dropboxTrackPath(track);
+    const key = artworkCacheKey(folder, path);
+    const isCurrent = () => artworkTrackIsCurrent(track, folder);
+    const cached = await FlurbArtworkCache.get(key).catch(() => null);
+    if (!isCurrent()) return;
+    if (cached?.cover && !state.artworkLinks.has(track.id)) publishArtwork(track, cached.cover);
+    if (!navigator.onLine || !state.token) return;
+
+    let revision = null;
+    if (cached?.revision) {
+      const metadata = await dropbox("/files/get_metadata", { path });
+      revision = metadata.rev;
+      if (!isCurrent()) return;
+      if (revision && revision === cached.revision) {
+        state.completedMetadata.add(track.id);
+        state.artworkCheckedAt.set(track.id, Date.now());
+        if (!cached.cover) publishArtwork(track, null);
+        return;
+      }
+    }
+    const readArtwork = /\.flac$/i.test(track.name) ? readFlacArtwork : readMp3Artwork;
+    const cover = await readArtwork(track, path, (value) => { if (value) revision = value; });
+    if (!isCurrent()) return;
+    state.completedMetadata.add(track.id);
+    state.artworkCheckedAt.set(track.id, Date.now());
+    publishArtwork(track, cover);
+    if (!revision) {
+      try { revision = (await dropbox("/files/get_metadata", { path })).rev; }
+      catch (_) {}
+    }
+    if (isCurrent()) await FlurbArtworkCache.put(key, cover, revision || null).catch(() => {});
+  }
   function pumpArtworkQueue() {
     while (state.activeArtworkDownloads < 2) {
       let track = state.artworkQueue.shift();
@@ -747,40 +853,32 @@
         state.preloadingArtwork = true;
         state.artworkLoading.add(track.id);
       }
-      const folder = state.libraryFolder;
       state.activeArtworkDownloads += 1;
-      const readArtwork = /\.flac$/i.test(track.name) ? readFlacArtwork : readMp3Artwork;
-      readArtwork(track).then((cover) => {
-        if (folder !== state.libraryFolder) return;
-        state.completedMetadata.add(track.id);
-        if (!cover) {
-          const images = state.artworkElements.get(track.id);
-          for (const image of [...(images || [])]) {
-            if (!image.isConnected || !image._flurbArtworkMissing) continue;
-            images.delete(image);
-            image._flurbArtworkMissing();
-          }
-          return;
-        }
-        const link = URL.createObjectURL(cover);
-        state.artworkLinks.set(track.id, link);
-        state.artworkElements.get(track.id)?.forEach((image) => setArtworkImage(image, link));
-        const albumImage = state.recentArtworkElements.get(recentAlbumPath(track));
-        if (albumImage && !albumImage.classList.contains("has-artwork")) {
-          state.artworkObserver?.unobserve(albumImage);
-          setArtworkImage(albumImage, link);
-        }
-        if (state.current?.id === track.id) {
-          updateMediaMetadata(state.current);
-          updatePlayerArtwork(state.current);
-        }
-        if (state.viewerTrack?.id === track.id) updateViewerArtwork(state.viewerTrack);
-      }).catch(() => {}).finally(() => {
+      loadArtwork(track, state.libraryFolder).catch(() => {}).finally(() => {
         state.artworkLoading.delete(track.id);
         state.activeArtworkDownloads -= 1;
         if (preload) state.preloadingArtwork = false;
+        if (state.artworkRechecks.delete(track.id)) queueTrackArtwork(state.catalog.get(track.id), true, true);
         pumpArtworkQueue();
       });
+    }
+  }
+  function artworkCheckDue(id) {
+    return Date.now() - (state.artworkCheckedAt.get(id) || 0) >= ARTWORK_REVISION_INTERVAL;
+  }
+  function checkVisibleArtwork(force = false) {
+    if (!state.token || !state.libraryFolder || !navigator.onLine || document.hidden) return;
+    const ids = new Set([state.current?.id]);
+    const list = els.trackList.getBoundingClientRect();
+    const collect = (image, id) => {
+      const rect = image.getBoundingClientRect();
+      if (rect.height && rect.bottom > Math.max(0, list.top) && rect.top < Math.min(innerHeight, list.bottom)) ids.add(id);
+    };
+    for (const [id, images] of state.artworkElements) for (const image of images) collect(image, id);
+    for (const image of state.recentArtworkElements.values()) collect(image, image._flurbArtworkId);
+    for (const id of ids) {
+      if (!id || (!force && (state.artworkLoading.has(id) || !artworkCheckDue(id)))) continue;
+      queueTrackArtwork(state.catalog.get(id), false, true);
     }
   }
   const addedDate = (track) => Number(track.flurb_added ?? track.added) || 0;
@@ -810,8 +908,12 @@
     if (config !== state.cloud || snapshot.generation <= (state.cloudSnapshot?.generation ?? -1)) return;
     const scroll = catalogScroller();
     const offset = scroll.scrollTop;
+    const updatedArtworkInventory = state.cloudSnapshot &&
+      snapshot.artworkInventory !== state.cloudSnapshot.artworkInventory;
     state.cloudSnapshot = snapshot;
     state.recentAlbumCache = null;
+    const oldCatalog = state.catalog;
+    const artworkUpdates = [];
     state.catalog = new Map();
     state.catalogFolders = new Map();
     state.favorites = new Set();
@@ -819,6 +921,17 @@
     for (const raw of snapshot.tracks.values()) {
       const track = { ...raw, name: raw.path.split("/").at(-1) };
       state.catalog.set(track.id, track);
+      const old = oldCatalog.get(track.id);
+      if (old && (state.completedMetadata.has(track.id) || state.artworkLoading.has(track.id) || state.artworkLinks.has(track.id)) &&
+          Object.keys(track).some((field) => field !== "favorite" && old[field] !== track[field])) {
+        if (old.path !== track.path) {
+          const link = state.artworkLinks.get(track.id);
+          if (link) URL.revokeObjectURL(link);
+          state.artworkLinks.delete(track.id);
+        }
+        state.completedMetadata.delete(track.id);
+        artworkUpdates.push(track);
+      }
       if (track.favorite) state.favorites.add(track.id);
       const artist = catalogFolder(artistPath(track), artistName(track), root);
       const album = albumPath(track);
@@ -841,10 +954,16 @@
       state.current = state.catalog.get(state.current.id);
       if (state.loadingTrack) updatePlayerTitle(state.current);
       else setPlayerMetadata(state.current);
+      updatePlayerArtwork(state.current);
     }
     if (state.libraryQueue) state.libraryQueue = [...state.catalog.values()];
     refreshCatalogView(false);
     scroll.scrollTo({ top: offset, behavior: "instant" });
+    for (const track of artworkUpdates) queueTrackArtwork(track, false, true);
+    if (updatedArtworkInventory) {
+      state.artworkCheckedAt.clear();
+      checkVisibleArtwork(true);
+    }
   }
 
   function folderAncestors(path) {
@@ -885,6 +1004,12 @@
     $("#settings-frame").contentWindow?.postMessage({ type: "flurb-turso-status", message: state.cloudStatus }, location.origin);
   }
 
+  function setCloudSpinner(syncing) {
+    els.settingsButton.classList.toggle("is-syncing", syncing);
+    els.settingsButton.setAttribute("aria-label", syncing ? "Settings, syncing with Turso" : "Settings");
+    els.settingsButton.title = syncing ? "Settings, syncing with Turso" : "Settings";
+  }
+
   let runningCloud;
   let cloudSyncRequested = false;
   async function syncCloud() {
@@ -902,6 +1027,7 @@
             sendCloudStatus();
             continue;
           }
+          setCloudSpinner(true);
           await FlurbCloud.sync(config, (snapshot) => applyCloudSnapshot(snapshot, config));
           if (config === state.cloud) {
             const pending = state.cloudSnapshot?.pending.length || 0;
@@ -917,7 +1043,10 @@
           if (!state.cloudSnapshot?.cursor && !state.catalog.size && navigator.onLine) showNotice(state.cloudStatus, "error");
         }
       }
-    } finally { runningCloud = false; }
+    } finally {
+      setCloudSpinner(false);
+      runningCloud = false;
+    }
   }
 
   async function loadCloudConfig() {
@@ -1121,16 +1250,14 @@
     button.append(image, fallback);
     item.append(button);
     button.addEventListener("click", () => openRecentAlbum(album));
-    const cached = album.tracks.find((track) => state.artworkLinks.has(track.id));
-    if (cached) registerTrackArtwork(image, cached);
-    else {
-      const candidates = artworkCandidates(album).filter((track) => !state.completedMetadata.has(track.id));
-      image._flurbArtworkMissing = () => {
-        const next = candidates.shift();
-        if (next) registerTrackArtwork(image, next);
-      };
-      image._flurbArtworkMissing();
-    }
+    const candidates = artworkCandidates(album);
+    image._flurbArtworkCandidates = candidates;
+    image._flurbArtworkMissing = () => {
+      const cached = album.tracks.find((track) => state.artworkLinks.has(track.id));
+      const next = cached || candidates.find((track) => !state.completedMetadata.has(track.id));
+      if (next) registerTrackArtwork(image, next);
+    };
+    image._flurbArtworkMissing();
     return item;
   }
   function observeMoreRows(count) {
@@ -1792,6 +1919,8 @@
       if (navigator.mediaSession) navigator.mediaSession.metadata = null;
     }
     state.completedMetadata.clear();
+    state.artworkCheckedAt.clear();
+    state.artworkRechecks.clear();
     state.recentArtworkPreload = null;
     for (const queued of state.artworkQueue.splice(0)) state.artworkLoading.delete(queued.id);
     for (const link of state.artworkLinks.values()) URL.revokeObjectURL(link);
@@ -1817,10 +1946,16 @@
     syncCloud();
     state.recentArtworkPreload = null;
     pumpArtworkQueue();
+    checkVisibleArtwork();
   });
   window.addEventListener("offline", syncCloud);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncCloud(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    syncCloud();
+    checkVisibleArtwork();
+  });
   setInterval(syncCloud, 5000);
+  setInterval(checkVisibleArtwork, ARTWORK_REVISION_INTERVAL);
   els.play.addEventListener("click", () => {
     if (!state.current) return;
     if (els.audio.paused) els.audio.play().catch((e) => showNotice(friendlyError(e), "error"));

@@ -9,10 +9,11 @@
   <title>flurb</title>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=no-focus-rings-1">
+  <link rel="stylesheet" href="./styles.css?v=artwork-cache-1">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu" crossorigin="anonymous" defer></script>
-  <script src="./turso-sync.js?v=1" defer></script>
-  <script src="./app.js?v=recent-artwork-1" defer></script>
+  <script src="./turso-sync.js?v=2" defer></script>
+  <script src="./artwork-cache.js?v=1" defer></script>
+  <script src="./app.js?v=artwork-cache-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -24,7 +25,7 @@
             <div class="search-box"><i class="search-icon" data-lucide="search" aria-hidden="true"></i><input id="search" type="search" placeholder="Search" aria-label="Search tracks and artists" disabled><button class="clear-search" id="clear-search" type="button" aria-label="Clear search" title="Clear search" disabled><i data-lucide="x" aria-hidden="true"></i></button></div>
           </div>
           <div class="action-row">
-            <button class="home-button settings-button" id="settings-button" type="button" aria-label="Settings" title="Settings"><i data-lucide="settings" aria-hidden="true"></i></button>
+            <button class="home-button settings-button" id="settings-button" type="button" aria-label="Settings" title="Settings"><i data-lucide="settings" aria-hidden="true"></i><span class="settings-sync-spinner" aria-hidden="true"></span></button>
             <div class="mode-picker">
             <button class="mode-select" id="view-button" type="button" aria-haspopup="menu" aria-controls="view-menu" aria-expanded="false"><span id="view-label">Recently added</span><i data-lucide="chevron-down" aria-hidden="true"></i></button>
             <div class="mode-menu" id="view-menu" role="menu" hidden>

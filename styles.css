@@ -1528,3 +1528,15 @@ html { -webkit-tap-highlight-color: transparent; }
   outline: none !important;
   box-shadow: none !important;
 }
+
+.settings-sync-spinner { display: none; }
+.settings-button.is-syncing > :not(.settings-sync-spinner) { display: none; }
+.settings-button.is-syncing > .settings-sync-spinner {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #888;
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}

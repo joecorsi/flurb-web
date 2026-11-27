@@ -1,7 +1,7 @@
 "use strict";
 
-const CACHE = "flurb-shell-v9";
-const FILES = ["./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js", "./styles.css", "./favicon.png", "./apple-touch-icon.png"];
+const CACHE = "flurb-shell-v10";
+const FILES = ["./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js", "./artwork-cache.js", "./styles.css", "./favicon.png", "./apple-touch-icon.png"];
 const ICONS = "https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js";
 const scope = new URL(self.registration.scope);
 const paths = new Set(FILES.map((file) => new URL(file, scope).pathname));

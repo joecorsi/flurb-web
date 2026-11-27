@@ -69,3 +69,14 @@ test("catalog paths are relative to the receiver's Dropbox root", () => {
     row(1, "invalid", [change("track", "song", { ...track, path: "../outside.wav" })])
   ]), /Invalid shared audio path/);
 });
+
+test("the editor inventory head signals artwork refresh without retaining its chunks", () => {
+  const cache = seed();
+  applyPage(cache, [
+    row(2, "rust-inventory-chunk", [change("metadata", "library_editor_scan_v1:chunk:one", { value: "inventory bytes" })]),
+    row(3, "rust-inventory-head", [change("metadata", "library_editor_scan_v1:head", { value: "inventory version" })])
+  ]);
+  assert.equal(cache.artworkInventory, "inventory version");
+  assert.equal(cache.modified.size, 0);
+  assert.equal(cache.cursor, 3);
+});

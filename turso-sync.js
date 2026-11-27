@@ -129,7 +129,10 @@
 
   function applyPatch(cache, { kind, key, patch }) {
     if (kind === "metadata") {
-      if (key.startsWith(MODIFIED_PREFIX)) {
+      if (key === "library_editor_scan_v1:head") {
+        if (patch === null) delete cache.artworkInventory;
+        else if (typeof patch.value === "string") cache.artworkInventory = patch.value;
+      } else if (key.startsWith(MODIFIED_PREFIX)) {
         const id = key.slice(MODIFIED_PREFIX.length);
         if (patch === null) cache.modified.delete(id);
         else if (Object.hasOwn(patch, "value")) cache.modified.set(id, patch.value);
