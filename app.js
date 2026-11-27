@@ -288,7 +288,7 @@
   function restoreView(view) {
     state.viewMode = view.view;
     state.folderPath = state.catalogFolders.has(view.path) ? view.path : CATALOG_ROOT;
-    state.folderHistory = folderAncestors(state.folderPath);
+    state.folderHistory = view.view === "library" ? folderAncestors(state.folderPath) : [];
     state.activePlaylistId = state.playlists.some((playlist) => playlist.id === view.playlistId) ? view.playlistId : null;
     state.recentGridReturn = view.recentGridReturn;
     state.searchScroll = view.searchScroll;
@@ -438,9 +438,9 @@
     }
     const root = CATALOG_ROOT;
     if (!state.cloud) { els.breadcrumbs.replaceChildren(); return; }
-    const rootCrumb = { path: root, name: "Library" };
-    const folders = [rootCrumb, ...state.folderHistory, ...(state.folderPath && state.folderPath !== root ? [{ path: state.folderPath, name: state.folderName }] : [])]
-      .filter((item, index, all) => item.path && (index === 0 || item.path.startsWith(`${root}/`)) && all.findIndex((entry) => entry.path === item.path) === index);
+    const folders = [{ path: root, name: "Library" }];
+    if (state.viewMode === "library") folders.push(...folderAncestors(state.folderPath));
+    if (state.folderPath !== root) folders.push({ path: state.folderPath, name: state.folderName });
     foldersDepth = folders.length - 1;
     folders.forEach((item, index) => addCrumb(index === 0 ? rootLabel : item.name, index === folders.length - 1, index === 0 ? goHomeLibrary : () => {
       state.folderHistory = folders.slice(1, index).map(({ path: folderPath, name }) => ({ path: folderPath, name }));
