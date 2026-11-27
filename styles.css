@@ -1266,6 +1266,33 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
   z-index: 60;
 }
 
+/* Keep mobile scrolling inside the list, never inside the page viewport. */
+@media (max-width: 699px) {
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  .app-shell { height: 100dvh; min-height: 0; overflow: hidden; padding-bottom: 0 !important; }
+  .app-shell > main { height: 100%; overflow: hidden; }
+  .library { height: 100%; min-height: 0; overflow: hidden; padding: 0 !important; }
+  .library-sticky { top: var(--visual-viewport-top, 0px) !important; }
+  .track-list {
+    position: fixed;
+    z-index: 1;
+    top: calc(var(--visual-viewport-top, 0px) + var(--library-sticky-height, 149px));
+    right: 0;
+    bottom: calc(var(--visual-viewport-bottom, 0px) + var(--player-height, 150px));
+    left: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 1rem;
+  }
+  body.is-keyboard-open .track-list { bottom: var(--visual-viewport-bottom, 0px); }
+  .player { bottom: var(--visual-viewport-bottom, 0px); }
+  body.is-keyboard-open .player { display: none !important; }
+  .notice { position: fixed; z-index: 80; top: calc(var(--visual-viewport-top, 0px) + var(--library-sticky-height, 149px)); right: 10px; left: 10px; }
+}
+
 
 /* Shuffle and repeat only change their glyph color while pressed. */
 #shuffle-button,
