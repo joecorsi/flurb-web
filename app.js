@@ -1,6 +1,9 @@
 (() => {
   "use strict";
   const API = "https://api.dropboxapi.com/2";
+  const TITLE_CACHE_KEY = "flurb.dropbox.trackTitles";
+  const TITLE_CACHE_LIMIT = 2000;
+  const MP3_HEADER_BYTES = 64 * 1024;
   const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "aif", "aifc", "aiff", "au", "alac", "wma", "wm", "m4b", "m4p", "m4r", "mid"]);
   const $ = (selector) => document.querySelector(selector);
   function renderLucideIcons(root = document) {
@@ -36,11 +39,15 @@
     folderCache: new Map(),
     artworkLinks: new Map(),
     metadataTitles: new Map(),
+    completedMetadata: new Set(),
+    titleCacheTimer: null,
     artworkLoading: new Set(),
     artworkElements: new Map(),
     artworkObserver: null,
     artworkQueue: [],
     activeArtworkDownloads: 0,
+    artworkFollowUps: [],
+    activeArtworkFollowUps: 0,
     titleScrollGesture: false,
     navigationRequest: 0,
     entries: [],
@@ -62,6 +69,10 @@
     listObserver: null,
     toastTimer: null
   };
+  try {
+    const savedTitles = JSON.parse(localStorage.getItem(TITLE_CACHE_KEY) || "[]");
+    state.metadataTitles = new Map(savedTitles.slice(-TITLE_CACHE_LIMIT));
+  } catch (_) {}
   try {
     const savedItems = JSON.parse(localStorage.getItem("flurb.dropbox.favoriteItems") || "[]");
     if (Array.isArray(savedItems)) state.favoriteItems = new Map(savedItems.filter((track) => track?.id).map((track) => [track.id, track]));
@@ -130,18 +141,19 @@
     }
     return state.refreshPromise;
   }
-  async function fetchTrackFile(track, retried = false) {
+  async function fetchTrackFile(track, range = null, retried = false) {
     const accessToken = await ensureAccessToken();
     const response = await fetch("https://content.dropboxapi.com/2/files/download", {
-      method: "POST",
+      method: range ? "GET" : "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "Dropbox-API-Arg": JSON.stringify({ path: track.id })
+        "Dropbox-API-Arg": JSON.stringify({ path: track.id }),
+        ...(range ? { Range: range } : {})
       }
     });
     if (response.status === 401 && state.refreshToken && !retried) {
       await ensureAccessToken(true);
-      return fetchTrackFile(track, true);
+      return fetchTrackFile(track, range, true);
     }
     if (response.status === 401) clearDropboxTokens();
     if (!response.ok) throw new Error(`Track metadata request failed (${response.status}).`);
@@ -192,8 +204,11 @@
     const relative = track.path_lower?.slice(root.length).split("/").filter(Boolean) || [];
     return relative.length > 2 ? relative[1] : relative.length > 1 ? relative[0] : state.folderName;
   }
+  function trackMetadataKey(track) {
+    return JSON.stringify([track.id, track.rev || track.server_modified || track.size || null]);
+  }
   function trackTitle(track) {
-    return state.metadataTitles.get(track.id) || track.name.replace(/\.[^.]+$/, "");
+    return state.metadataTitles.get(trackMetadataKey(track)) || track.name.replace(/\.[^.]+$/, "");
   }
   function updateMediaMetadata(track) {
     if (!track || !navigator.mediaSession || !window.MediaMetadata) return;
@@ -506,14 +521,16 @@
     const title = new TextDecoder("windows-1252").decode(bytes.subarray(start + 3, start + 33)).replace(/\u0000.*$/, "").trim();
     return title || null;
   }
-  function extractId3Title(buffer) {
+  function extractId3Title(buffer, includeLegacy = true) {
     let bytes = new Uint8Array(buffer);
-    if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return extractId3v1Title(bytes);
+    const originalBytes = bytes;
+    const legacyTitle = () => includeLegacy ? extractId3v1Title(originalBytes) : null;
+    if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return legacyTitle();
     const version = bytes[3];
-    if (version < 2 || version > 4) return extractId3v1Title(bytes);
+    if (version < 2 || version > 4) return legacyTitle();
     let tagSize = ((bytes[6] & 0x7f) << 21) | ((bytes[7] & 0x7f) << 14) | ((bytes[8] & 0x7f) << 7) | (bytes[9] & 0x7f);
     let tagEnd = Math.min(bytes.length, 10 + tagSize);
-    if (version === 2 && (bytes[5] & 0x40)) return extractId3v1Title(bytes);
+    if (version === 2 && (bytes[5] & 0x40)) return legacyTitle();
     if (bytes[5] & 0x80) {
       const tag = removeId3Unsynchronization(bytes.subarray(10, tagEnd));
       const clean = new Uint8Array(10 + tag.length);
@@ -548,10 +565,10 @@
       if (version === 4 && (frameFlags & 0x40)) payload = payload.subarray(1);
       if (version === 4 && (frameFlags & 0x01)) payload = payload.subarray(4);
       if (version === 4 && (frameFlags & 0x02)) payload = removeId3Unsynchronization(payload);
-      if (frameId === titleFrame) return decodeId3Text(payload) || extractId3v1Title(bytes);
+      if (frameId === titleFrame) return decodeId3Text(payload) || legacyTitle();
       offset += headerSize + frameSize;
     }
-    return extractId3v1Title(bytes);
+    return legacyTitle();
   }
   function extractId3Artwork(buffer) {
     let bytes = new Uint8Array(buffer);
@@ -641,10 +658,21 @@
     if (state.artworkObserver) state.artworkObserver.observe(image);
     else queueTrackArtwork(track);
   }
-  function queueTrackArtwork(track) {
-    if (!track || state.metadataTitles.has(track.id) || state.artworkLoading.has(track.id)) return;
-    state.artworkLoading.add(track.id);
-    state.artworkQueue.push(track);
+  function queueTrackArtwork(track, prioritize = false) {
+    if (!track) return;
+    const key = trackMetadataKey(track);
+    if (state.completedMetadata.has(key) || (!hasId3ArtworkSupport(track) && state.metadataTitles.has(key))) return;
+    const queue = state.artworkQueue;
+    if (state.artworkLoading.has(key)) {
+      if (prioritize) {
+        const index = queue.findIndex((queued) => trackMetadataKey(queued) === key);
+        if (index > 0) queue.unshift(queue.splice(index, 1)[0]);
+      }
+      return;
+    }
+    state.artworkLoading.add(key);
+    if (prioritize) queue.unshift(track);
+    else queue.push(track);
     pumpArtworkQueue();
   }
   function updatePlayerArtwork(track) {
@@ -680,13 +708,47 @@
     els.playerArtworkButton.setAttribute("aria-label", "View current track artwork");
     state.viewerTrack = null;
   }
-  let metadataReader;
-  async function readTrackMetadata(track) {
-    if (hasId3ArtworkSupport(track)) {
-      const response = await fetchTrackFile(track);
-      const buffer = await response.arrayBuffer();
-      return { title: extractId3Title(buffer), cover: extractId3Artwork(buffer) };
+  function id3TagEnd(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33 ||
+        bytes[3] < 2 || bytes[3] > 4) return 0;
+    return 10 + id3FrameSize(bytes, 6, 4);
+  }
+  async function readMp3Metadata(track, onTitle) {
+    const first = await fetchTrackFile(track, `bytes=0-${MP3_HEADER_BYTES - 1}`);
+    let buffer = await first.arrayBuffer();
+    if (first.status !== 206 || (track.size && buffer.byteLength >= track.size)) {
+      onTitle(extractId3Title(buffer));
+      return { cover: extractId3Artwork(buffer) };
     }
+    let title = extractId3Title(buffer, false);
+    onTitle(title);
+    let cover = extractId3Artwork(buffer);
+    const tagEnd = Math.min(id3TagEnd(buffer), track.size || Infinity);
+    if (tagEnd > buffer.byteLength && title && !cover) {
+      return { followUp: async () => {
+        const tag = await fetchTrackFile(track, `bytes=0-${tagEnd - 1}`);
+        return extractId3Artwork(await tag.arrayBuffer());
+      } };
+    }
+    if (tagEnd > buffer.byteLength && !title) {
+      const tag = await fetchTrackFile(track, `bytes=0-${tagEnd - 1}`);
+      buffer = await tag.arrayBuffer();
+      title ||= extractId3Title(buffer, tag.status !== 206);
+      onTitle(title);
+      cover ||= extractId3Artwork(buffer);
+      if (tag.status !== 206) return { cover };
+    }
+    if (!title) {
+      const range = track.size ? `bytes=${Math.max(0, track.size - 128)}-` : "bytes=-128";
+      const tail = await fetchTrackFile(track, range);
+      onTitle(extractId3v1Title(new Uint8Array(await tail.arrayBuffer())));
+    }
+    return { cover };
+  }
+  let metadataReader;
+  async function readTrackMetadata(track, onTitle) {
+    if (hasId3ArtworkSupport(track)) return readMp3Metadata(track, onTitle);
     metadataReader ??= import("https://esm.sh/music-metadata@11.16.1?bundle&target=es2022");
     const { parseWebStream } = await metadataReader;
     const response = await fetchTrackFile(track);
@@ -694,8 +756,14 @@
       const { common } = await parseWebStream(response.body, {
         path: track.name,
         size: track.size || Number(response.headers.get("Content-Length")) || undefined
-      }, { skipCovers: true });
-      return { title: common.title?.trim() };
+      }, {
+        skipCovers: true,
+        observer: ({ tag }) => {
+          if (tag.type === "common" && tag.id === "title" && typeof tag.value === "string") onTitle(tag.value.trim());
+        }
+      });
+      onTitle(common.title?.trim());
+      return {};
     } finally {
       await response.body?.cancel().catch(() => {});
     }
@@ -709,33 +777,73 @@
       state.favorites.has(track.id) ? `Remove ${title} from favorites` : `Favorite ${title}`);
     row.querySelector(".track-more").setAttribute("aria-label", `More actions for ${title}`);
   }
+  function saveTrackTitles() {
+    clearTimeout(state.titleCacheTimer);
+    state.titleCacheTimer = null;
+    try { localStorage.setItem(TITLE_CACHE_KEY, JSON.stringify([...state.metadataTitles])); } catch (_) {}
+  }
+  function publishTrackTitle(track, key, title) {
+    if (!title || state.metadataTitles.get(key) === title) return;
+    state.metadataTitles.delete(key);
+    state.metadataTitles.set(key, title);
+    if (state.metadataTitles.size > TITLE_CACHE_LIMIT) {
+      state.metadataTitles.delete(state.metadataTitles.keys().next().value);
+    }
+    if (!state.titleCacheTimer) state.titleCacheTimer = setTimeout(saveTrackTitles, 250);
+    els.tableBody.querySelectorAll(`.track-row[data-track-id="${CSS.escape(track.id)}"]`)
+      .forEach((row) => updateTrackRowTitle(row, track));
+    if (state.current && trackMetadataKey(state.current) === key) {
+      updatePlayerTitle(track);
+      updateMediaMetadata(track);
+    }
+  }
+  window.addEventListener("pagehide", () => {
+    if (state.titleCacheTimer) saveTrackTitles();
+  });
+  function finishTrackMetadata(track, key, cover) {
+    state.completedMetadata.add(key);
+    if (cover) {
+      const objectUrl = URL.createObjectURL(cover);
+      state.artworkLinks.set(track.id, objectUrl);
+      state.artworkElements.get(track.id)?.forEach((image) => {
+        image.src = objectUrl;
+        image.classList.add("has-artwork");
+        image.parentElement?.classList.add("has-artwork");
+      });
+    }
+    if (state.current && trackMetadataKey(state.current) === key) {
+      updateMediaMetadata(track);
+      updatePlayerArtwork(track);
+    }
+    if (state.viewerTrack?.id === track.id) updateViewerArtwork(track);
+  }
+  function pumpArtworkFollowUps() {
+    while (state.activeArtworkFollowUps < 2 && state.artworkFollowUps.length) {
+      const { track, key, followUp } = state.artworkFollowUps.shift();
+      state.activeArtworkFollowUps += 1;
+      followUp().then((cover) => finishTrackMetadata(track, key, cover)).catch(() => {}).finally(() => {
+        state.artworkLoading.delete(key);
+        state.activeArtworkFollowUps -= 1;
+        pumpArtworkFollowUps();
+      });
+    }
+  }
   function pumpArtworkQueue() {
     while (state.activeArtworkDownloads < 2 && state.artworkQueue.length) {
       const track = state.artworkQueue.shift();
+      const key = trackMetadataKey(track);
       state.activeArtworkDownloads += 1;
-      readTrackMetadata(track).then(({ title, cover }) => {
-        state.metadataTitles.set(track.id, title || null);
-        if (title) {
-          els.tableBody.querySelectorAll(`.track-row[data-track-id="${CSS.escape(track.id)}"]`)
-            .forEach((row) => updateTrackRowTitle(row, track));
+      let waitingForArtwork = false;
+      readTrackMetadata(track, (title) => publishTrackTitle(track, key, title)).then(({ cover, followUp }) => {
+        if (followUp) {
+          waitingForArtwork = true;
+          state.artworkFollowUps.push({ track, key, followUp });
+          pumpArtworkFollowUps();
+        } else {
+          finishTrackMetadata(track, key, cover);
         }
-        if (cover) {
-          const objectUrl = URL.createObjectURL(cover);
-          state.artworkLinks.set(track.id, objectUrl);
-          state.artworkElements.get(track.id)?.forEach((image) => {
-            image.src = objectUrl;
-            image.classList.add("has-artwork");
-            image.parentElement?.classList.add("has-artwork");
-          });
-        }
-        if (state.current?.id === track.id) {
-          updatePlayerTitle(track);
-          updateMediaMetadata(track);
-          updatePlayerArtwork(track);
-        }
-        if (state.viewerTrack?.id === track.id) updateViewerArtwork(track);
       }).catch(() => {}).finally(() => {
-        state.artworkLoading.delete(track.id);
+        if (!waitingForArtwork) state.artworkLoading.delete(key);
         state.activeArtworkDownloads -= 1;
         pumpArtworkQueue();
       });
@@ -1161,7 +1269,7 @@
     state.loadingTrack = true;
     state.current = track;
     updatePlayerArtwork(track);
-    queueTrackArtwork(track);
+    queueTrackArtwork(track, true);
     setPlayerMetadata(track);
     if (state.loadingTrack) els.nowAlbum.innerHTML = '<span class="player-loading" role="status" aria-label="Loading track"><i></i></span>';
     els.nowFavorite.disabled = false;
