@@ -941,8 +941,8 @@
       const album = albumPath(track);
       const folder = album === artist.path_lower ? artist : catalogFolder(album, track.album.trim(), artist);
       folder.tracks.push(track);
-      const compilation = compilationAlbumPath(track);
-      if (compilation) catalogFolder(compilation, track.album.trim()).tracks.push(track);
+      const recentAlbum = recentAlbumPath(track);
+      if (recentAlbum !== album) catalogFolder(recentAlbum, recentAlbumName(track)).tracks.push(track);
     }
     state.playlists = [...snapshot.playlists.values()].map((playlist) => {
       const members = playlist.smart_rule === "hearted" ? [...state.favorites] : snapshot.members.get(playlist.id) || [];
@@ -1207,8 +1207,26 @@
     refreshCatalogView(false);
     catalogScroller().scrollTo({ top: previous?.top ?? 0, behavior: "instant" });
   }
+  function knownAlbumName(track) {
+    const album = track.album?.trim();
+    return album && album.toLowerCase() !== "unknown album" ? album : null;
+  }
+  function untaggedAlbumFolder(track) {
+    const parts = track.path.split("/").slice(0, -1);
+    if (parts.length > 1 && /^(?:cd|disc|disk)[\s_-]*\d+[\s_-]*$/i.test(parts.at(-1))) parts.pop();
+    return parts;
+  }
+  function recentAlbumName(track) {
+    const title = knownAlbumName(track);
+    if (title) return title;
+    const folder = untaggedAlbumFolder(track).at(-1);
+    return folder && folder.toLowerCase() !== artistName(track).toLowerCase() ? folder : "Unknown Album";
+  }
   function recentAlbumPath(track) {
-    return compilationAlbumPath(track) || albumPath(track);
+    if (knownAlbumName(track)) return compilationAlbumPath(track) || albumPath(track);
+    const folder = untaggedAlbumFolder(track).join("/");
+    const key = folder ? `folder:${folder}` : `loose:${artistName(track)}`;
+    return `${CATALOG_ROOT}/@untagged-${encodeURIComponent(key.normalize("NFC"))}`;
   }
   function artworkCandidates(album) {
     return album.tracks.filter(supportsArtwork).sort(albumTrackOrder).slice(0, 3);
@@ -1220,7 +1238,7 @@
       const path = recentAlbumPath(track);
       if (!albums.has(path)) {
         albums.set(path, {
-          path, name: track.album?.trim() || "Unknown Album", artist: compilation ? "Various Artists" : artistName(track),
+          path, name: recentAlbumName(track), artist: compilation ? "Various Artists" : artistName(track),
           added: addedDate(track), tracks: []
         });
       }
