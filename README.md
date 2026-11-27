@@ -1,24 +1,25 @@
 # Flurb web player
 
-A small, mobile-first browser player for audio files stored in Dropbox. It uses Dropbox OAuth 2 with PKCE directly from the browser; no app secret or server is used.
+Flurb Web is a static browser player. It synchronizes the catalog, favorites, and playlists with a library published by Flurb Rust to Turso. Dropbox serves audio from the music folder selected on each device.
 
-## Dropbox access
+## Connect a library
 
-- The Dropbox app uses the **Full Dropbox** access type because the library may be an existing folder in the account.
-- The app requests only `files.metadata.read` and `files.content.read`.
-- On first connection, Flurb lists top-level folder metadata so the user can choose one library folder. The player then lists and plays audio only inside that folder and its subfolders. The Change folder action returns to the folder selector.
-- The OAuth token is kept in the current browser tab's session storage. The selected folder is stored locally in that browser.
-- The Dropbox app key is public and may be embedded in the web client. Never include the Dropbox app secret or an access token in this repository.
+1. In Flurb Rust, connect your Turso database and wait for the library to finish publishing.
+2. In Flurb Web, open Settings and enter the same database URL and a database-scoped token with read/write access. Use a token created for that database, for example with `turso db tokens create <database-name>`.
+3. Connect Dropbox and select the folder that contains the same music tree. A track whose shared path is `Artist/Album/Track.mp3` uses that path inside the selected folder.
+
+Flurb Web stores the Turso token in this browser's IndexedDB and sends it only to the selected Turso database. Disconnect in Settings removes the token from the browser. Expired tokens can be replaced by reconnecting to the same database. Old Dropbox-only favorites and playlists are not imported into an existing shared library.
+
+## Offline and sync
+
+After a successful online visit, the app shell and last synchronized catalog can be opened offline. Favorite and playlist edits are saved locally with a durable outbox. Audio playback requires Dropbox connectivity.
+
+The app pushes new edits promptly and checks for incoming changes approximately every five seconds while open. It uses Flurb Rust's Turso change log, sequence cursor, and retry IDs. Independent fields merge, same-field changes follow server sequence, deletion wins over stale partial edits, and an ordered playlist's membership is one document. Changes and cursor checkpoints are written together in IndexedDB.
 
 ## Run locally
 
-1. In the Dropbox app's **OAuth 2** settings, add `http://localhost:8080/` as a redirect URI.
-2. From this directory, start a local server:
+```sh
+python3 -m http.server 8080
+```
 
-   ```sh
-   python3 -m http.server 8080
-   ```
-
-3. Open <http://localhost:8080/> and connect Dropbox.
-
-The published site is <https://joecorsi.github.io/flurb-web/>. Its redirect URI must be present in the Dropbox app settings.
+Open <http://localhost:8080/>. For Dropbox sign-in, register that URL as an OAuth 2 redirect URI for the Dropbox app. The published redirect URI is <https://joecorsi.github.io/flurb-web/>.

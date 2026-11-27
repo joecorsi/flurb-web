@@ -213,6 +213,67 @@
     loadAccountDetails();
     listRootFolders();
   });
+  const cloud = window.FlurbCloud;
+  const tursoForm = document.querySelector("#turso-form");
+  const tursoUrl = document.querySelector("#turso-url");
+  const tursoToken = document.querySelector("#turso-token");
+  const tursoConnect = document.querySelector("#turso-connect");
+  const tursoDisconnect = document.querySelector("#turso-disconnect");
+  const tursoStatus = document.querySelector("#turso-status");
+  const setTursoStatus = (text, error = false) => {
+    tursoStatus.textContent = text;
+    tursoStatus.classList.toggle("error", error);
+  };
+  const notifyPlayer = (type) => {
+    if (window.parent !== window) window.parent.postMessage({ type }, location.origin);
+  };
+  function updateTursoForm() {
+    const config = cloud.readConfig();
+    tursoUrl.value = config?.origin || "";
+    tursoDisconnect.hidden = !config;
+    tursoConnect.textContent = config ? "Reconnect Turso" : "Connect Turso";
+  }
+  tursoForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    tursoConnect.disabled = tursoDisconnect.disabled = true;
+    setTursoStatus("Connecting to Turso…");
+    try {
+      await cloud.connect(tursoUrl.value, tursoToken.value);
+      tursoToken.value = "";
+      updateTursoForm();
+      setTursoStatus("Connected to Turso.");
+      notifyPlayer("flurb-turso-changed");
+    } catch (error) {
+      setTursoStatus(error.message || "Could not connect to Turso.", true);
+    } finally {
+      tursoConnect.disabled = tursoDisconnect.disabled = false;
+    }
+  });
+  tursoDisconnect.addEventListener("click", async () => {
+    tursoConnect.disabled = tursoDisconnect.disabled = true;
+    try {
+      await cloud.disconnect();
+      tursoToken.value = "";
+      updateTursoForm();
+      setTursoStatus("Disconnected. Local changes will resume syncing when you reconnect to this library.");
+      notifyPlayer("flurb-turso-changed");
+    } catch (error) {
+      setTursoStatus(error.message || "Could not disconnect Turso.", true);
+    } finally {
+      tursoConnect.disabled = tursoDisconnect.disabled = false;
+    }
+  });
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin || event.source !== window.parent ||
+        event.data?.type !== "flurb-turso-status" || !cloud.readConfig() || !event.data.message) return;
+    setTursoStatus(event.data.message, event.data.message.startsWith("Turso sync paused"));
+  });
+  updateTursoForm();
+  if (cloud.readConfig()) {
+    setTursoStatus("Connected to Turso.");
+    notifyPlayer("flurb-turso-status-request");
+  }
+
   token = localStorage.getItem("flurb.dropbox.accessToken") || sessionStorage.getItem("flurb.dropbox.accessToken") || "";
   if (token) {
     const selected = updateSelectedFolder();

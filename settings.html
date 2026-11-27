@@ -8,7 +8,8 @@
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
   <link rel="stylesheet" href="./styles.css?v=mobile-player-51">
-  <script src="./settings.js?v=mobile-player-15" defer></script>
+  <script src="./turso-sync.js?v=1" defer></script>
+  <script src="./settings.js?v=turso-1" defer></script>
 </head>
 <body class="settings-page">
   <main class="settings-shell">
@@ -33,13 +34,13 @@
     </section>
     <section class="settings-panel settings-panel-turso" aria-labelledby="turso-heading">
       <h1 id="turso-heading">Turso</h1>
-      <dl class="settings-account" aria-label="Turso account details">
-        <div><dt>Account</dt><dd>—</dd></div>
-        <div><dt>Logged in</dt><dd>—</dd></div>
-      </dl>
-      <label class="settings-field">Database URL<input type="url" placeholder="libsql://…" disabled></label>
-      <label class="settings-field">Auth token<input type="password" placeholder="Auth token" disabled></label>
-      <button class="settings-connect settings-connect-placeholder" type="button" disabled>Connect Turso</button>
+      <form id="turso-form">
+        <label class="settings-field">Database URL<input id="turso-url" type="url" placeholder="libsql://…" required></label>
+        <label class="settings-field">Database token<input id="turso-token" type="password" placeholder="Database-scoped token" autocomplete="off" required></label>
+        <button class="settings-connect" id="turso-connect" type="submit">Connect Turso</button>
+        <button class="settings-reconnect" id="turso-disconnect" type="button" hidden>Disconnect Turso</button>
+      </form>
+      <p id="turso-status" class="settings-status" role="status" aria-live="polite"></p>
     </section>
   </main>
 </body>
