@@ -250,12 +250,7 @@
   }
   function goBackOneFolder() {
     if (state.viewMode === "recent" && state.folderPath !== CATALOG_ROOT) return returnToRecentGrid();
-    if (state.viewMode === "playlists" && state.activePlaylistId) {
-      state.activePlaylistId = null;
-      renderBreadcrumbs();
-      renderTracks();
-      return;
-    }
+    if (state.viewMode === "playlists" && state.activePlaylistId) return selectPlaylistView(null);
     const root = CATALOG_ROOT;
     if (state.folderPath === root) return;
     const previous = state.folderHistory.pop();
@@ -267,13 +262,7 @@
   }
   function goHomeLibrary() {
     if (state.viewMode === "recent" && state.folderPath !== CATALOG_ROOT) return returnToRecentGrid();
-    if (state.viewMode === "playlists") {
-      state.activePlaylistId = null;
-      state.folderHistory = [];
-      renderBreadcrumbs();
-      renderTracks();
-      return;
-    }
+    if (state.viewMode === "playlists") return selectPlaylistView(null);
     if (!state.cloud) return;
     state.folderHistory = [];
     history.replaceState({ flurbRootGuard: true }, "", location.href);
@@ -386,7 +375,7 @@
     els.home.setAttribute("aria-label", els.home.title);
   }
   function setViewMode(view) {
-    if (view !== state.viewMode) {
+    if (view !== state.viewMode || state.activePlaylistId) {
       els.search.value = "";
       state.searchScroll = null;
       state.recentGridReturn = null;
@@ -1098,9 +1087,8 @@
   }
   function filteredTracks() {
     const query = els.search.value.trim().toLocaleLowerCase();
-    const tracks = query && state.viewMode === "library" && state.folderPath === CATALOG_ROOT
-      ? [...state.catalog.values()] : visibleTracks();
-    return tracks.filter((track) => !query || [trackTitle(track), track.name].some((name) => name.toLocaleLowerCase().includes(query)));
+    return visibleTracks().filter((track) => !query ||
+      [trackTitle(track), track.name, playerArtist(track)].some((name) => name.toLocaleLowerCase().includes(query)));
   }
   function visibleTracks() {
     if (state.viewMode === "favorites") return [...state.favorites].map((id) => state.catalog.get(id));
@@ -1226,8 +1214,7 @@
     state.recentAlbumCache ??= buildRecentAlbums();
     if (!query) return state.recentAlbumCache;
     return state.recentAlbumCache.filter((album) =>
-      [album.name, album.artist].some((name) => name.toLocaleLowerCase().includes(query)) ||
-      album.tracks.some((track) => [trackTitle(track), playerArtist(track)].some((text) => text.toLocaleLowerCase().includes(query))));
+      [album.name, album.artist].some((name) => name.toLocaleLowerCase().includes(query)));
   }
   function makeRecentAlbumTile(album) {
     const item = document.createElement("div");
@@ -1375,10 +1362,16 @@
     });
     if (!saved) return;
     if (track) toast(`Added to ${name}`);
-    else if (state.playlists.some((playlist) => playlist.id === id)) {
-      state.activePlaylistId = id;
-      refreshCatalogView();
-    }
+    else if (state.playlists.some((playlist) => playlist.id === id)) selectPlaylistView(id);
+  }
+  function selectPlaylistView(id) {
+    if (id === state.activePlaylistId) return;
+    state.activePlaylistId = id;
+    state.displayLimit = 100;
+    els.search.value = "";
+    state.searchScroll = null;
+    syncSearchState();
+    refreshCatalogView();
   }
   function makePlaylistRow(playlist) {
     const row = document.createElement("button"); row.type = "button"; row.className = "library-row artist-row playlist-row";
@@ -1387,7 +1380,7 @@
     const title = document.createElement("span"); title.className = "track-name"; title.textContent = playlist.name;
     const meta = document.createElement("span"); meta.className = "track-meta"; meta.textContent = `${playlist.tracks.length} tracks`;
     copy.append(title, meta); row.append(copy);
-    row.addEventListener("click", () => { state.activePlaylistId = playlist.id; renderBreadcrumbs(); renderTracks(); });
+    row.addEventListener("click", () => selectPlaylistView(playlist.id));
     return row;
   }
   async function addTrackToPlaylist(track, playlist) {
