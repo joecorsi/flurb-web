@@ -1211,22 +1211,12 @@
     const album = track.album?.trim();
     return album && album.toLowerCase() !== "unknown album" ? album : null;
   }
-  function untaggedAlbumFolder(track) {
-    const parts = track.path.split("/").slice(0, -1);
-    if (parts.length > 1 && /^(?:cd|disc|disk)[\s_-]*\d+[\s_-]*$/i.test(parts.at(-1))) parts.pop();
-    return parts;
-  }
   function recentAlbumName(track) {
-    const title = knownAlbumName(track);
-    if (title) return title;
-    const folder = untaggedAlbumFolder(track).at(-1);
-    return folder && folder.toLowerCase() !== artistName(track).toLowerCase() ? folder : "Unknown Album";
+    return knownAlbumName(track) || trackTitle(track);
   }
   function recentAlbumPath(track) {
     if (knownAlbumName(track)) return compilationAlbumPath(track) || albumPath(track);
-    const folder = untaggedAlbumFolder(track).join("/");
-    const key = folder ? `folder:${folder}` : `loose:${artistName(track)}`;
-    return `${CATALOG_ROOT}/@untagged-${encodeURIComponent(key.normalize("NFC"))}`;
+    return `${CATALOG_ROOT}/@untagged-${encodeURIComponent(track.id)}`;
   }
   function artworkCandidates(album) {
     return album.tracks.filter(supportsArtwork).sort(albumTrackOrder).slice(0, 3);
@@ -1239,7 +1229,7 @@
       if (!albums.has(path)) {
         albums.set(path, {
           path, name: recentAlbumName(track), artist: compilation ? "Various Artists" : artistName(track),
-          added: addedDate(track), tracks: []
+          unknownAlbum: !knownAlbumName(track), added: addedDate(track), tracks: []
         });
       }
       const album = albums.get(path);
@@ -1263,7 +1253,8 @@
     const albums = state.recentAlbumWindow.albums;
     if (!query) return albums;
     return albums.filter((album) =>
-      [album.name, album.artist].some((name) => name.toLocaleLowerCase().includes(query)));
+      [album.name, album.artist, album.unknownAlbum ? "Unknown Album" : ""]
+        .some((name) => name.toLocaleLowerCase().includes(query)));
   }
   function refreshRecentCutoff() {
     if (!state.cloudSnapshot || state.recentAlbumWindow?.cutoff === recentCutoff()) return;
@@ -1281,7 +1272,10 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "recent-album-cover";
-    button.setAttribute("aria-label", `Open ${album.name} by ${album.artist}`);
+    const subtitle = album.unknownAlbum ? `Unknown Album · ${album.artist}` : album.artist;
+    button.setAttribute("aria-label", album.unknownAlbum
+      ? `Open ${album.name} by ${album.artist} (Unknown Album)`
+      : `Open ${album.name} by ${album.artist}`);
     const image = document.createElement("img");
     image.alt = "";
     state.recentArtworkElements.set(album.path, image);
@@ -1291,7 +1285,7 @@
     const title = document.createElement("strong");
     title.textContent = album.name;
     const artist = document.createElement("span");
-    artist.textContent = album.artist;
+    artist.textContent = subtitle;
     fallback.append(title, artist);
     button.append(image, fallback);
     item.append(button);
