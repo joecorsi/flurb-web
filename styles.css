@@ -1401,3 +1401,38 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .player #now-favorite:not(.active):not(:active),
 .track-favorite:not(.active):not(:active) { color: #bcbcbc !important; }
 .player #now-favorite.active { color: #a54fff !important; }
+
+.track-list.is-recent-albums { padding: 10px 10px 1rem; }
+.is-recent-albums .track-rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.is-recent-albums .list-sentinel { grid-column: 1 / -1; }
+.recent-album-cover {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  padding: 10px;
+  border: 0;
+  border-radius: 4px;
+  background: #262628;
+  color: #eee;
+  cursor: pointer;
+}
+.recent-album-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+.recent-album-cover.has-artwork img { opacity: 1; }
+.recent-album-cover.has-artwork .recent-album-label { visibility: hidden; }
+.recent-album-label { display: grid; min-width: 0; gap: .35rem; overflow-wrap: anywhere; }
+.recent-album-label span { color: #a9a9ab; }
+.recent-album-cover:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }

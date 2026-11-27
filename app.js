@@ -3,7 +3,7 @@
   const API = "https://api.dropboxapi.com/2";
   const CATALOG_ROOT = "/catalog";
   const { FlurbCloud } = window;
-  const MP3_HEADER_BYTES = 64 * 1024;
+  const ARTWORK_HEADER_BYTES = 64 * 1024;
   const appleTimestamp = () => Date.now() / 1000 - 978307200;
   const $ = (selector) => document.querySelector(selector);
   function renderLucideIcons(root = document) {
@@ -52,6 +52,8 @@
     tracks: [],
     displayLimit: 100,
     searchScroll: null,
+    recentGridReturn: null,
+    recentAlbumCache: null,
     current: null,
     viewerTrack: null,
     loadingTrack: false,
@@ -230,6 +232,7 @@
     });
   }
   function goBackOneFolder() {
+    if (state.viewMode === "recent" && state.folderPath !== CATALOG_ROOT) return returnToRecentGrid();
     if (state.viewMode === "playlists" && state.activePlaylistId) {
       state.activePlaylistId = null;
       renderBreadcrumbs();
@@ -246,6 +249,7 @@
     loadLibraryFolder(previous.path);
   }
   function goHomeLibrary() {
+    if (state.viewMode === "recent" && state.folderPath !== CATALOG_ROOT) return returnToRecentGrid();
     if (state.viewMode === "playlists") {
       state.activePlaylistId = null;
       state.folderHistory = [];
@@ -337,6 +341,7 @@
     if (view !== state.viewMode) {
       els.search.value = "";
       state.searchScroll = null;
+      state.recentGridReturn = null;
       syncSearchState();
       els.clearSearch.disabled = true;
     }
@@ -350,7 +355,7 @@
     history.replaceState({ flurbRootGuard: true }, "", location.href);
     loadLibraryFolder();
   }
-  const hasId3ArtworkSupport = (track) => track.name.toLowerCase().endsWith(".mp3");
+  const supportsArtwork = (track) => /\.(mp3|flac)$/i.test(track.name);
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
     els.shuffleLibrary.hidden = state.viewMode !== "library" || state.folderPath !== CATALOG_ROOT || !state.catalog.size;
@@ -539,7 +544,7 @@
     else queueTrackArtwork(track);
   }
   function queueTrackArtwork(track, prioritize = false) {
-    if (!track || !hasId3ArtworkSupport(track) || !state.token || !state.libraryFolder) return;
+    if (!track || !supportsArtwork(track) || !state.token || !state.libraryFolder) return;
     const key = track.id;
     if (state.completedMetadata.has(key)) return;
     const queue = state.artworkQueue;
@@ -580,7 +585,7 @@
     const playerTop = els.player.getBoundingClientRect().top;
     els.artworkViewer.style.top = `${Math.max(0, stickyBottom)}px`;
     els.artworkViewer.style.bottom = `${Math.max(0, window.innerHeight - playerTop)}px`;
-    if (hasId3ArtworkSupport(track)) queueTrackArtwork(track);
+    if (supportsArtwork(track)) queueTrackArtwork(track);
   }
   function closeArtworkViewer() {
     els.artworkViewer.hidden = true;
@@ -595,13 +600,56 @@
     return 10 + id3FrameSize(bytes, 6, 4);
   }
   async function readMp3Artwork(track) {
-    const first = await fetchTrackFile(track, `bytes=0-${MP3_HEADER_BYTES - 1}`);
+    const first = await fetchTrackFile(track, `bytes=0-${ARTWORK_HEADER_BYTES - 1}`);
     const buffer = await first.arrayBuffer();
     const cover = extractId3Artwork(buffer);
     const tagEnd = id3TagEnd(buffer);
     if (cover || first.status !== 206 || tagEnd <= buffer.byteLength) return cover;
     const tag = await fetchTrackFile(track, `bytes=0-${tagEnd - 1}`);
     return extractId3Artwork(await tag.arrayBuffer());
+  }
+  function flacPicture(bytes) {
+    const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (data.byteLength < 32) return null;
+    const typeEnd = 8 + data.getUint32(4);
+    if (typeEnd + 4 > data.byteLength) return null;
+    const descriptionEnd = typeEnd + 4 + data.getUint32(typeEnd);
+    const imageStart = descriptionEnd + 20;
+    if (imageStart > data.byteLength) return null;
+    const mime = new TextDecoder().decode(bytes.subarray(8, typeEnd));
+    const imageEnd = imageStart + data.getUint32(imageStart - 4);
+    if (!mime.startsWith("image/") || imageEnd <= imageStart || imageEnd > data.byteLength) return null;
+    return { type: data.getUint32(0), cover: new Blob([bytes.subarray(imageStart, imageEnd)], { type: mime }) };
+  }
+  async function readFlacArtwork(track) {
+    let start = 0;
+    let bytes = new Uint8Array();
+    async function read(offset, length) {
+      if (offset < start || offset + length > start + bytes.length) {
+        const response = await fetchTrackFile(track, `bytes=${offset}-${offset + Math.max(length, ARTWORK_HEADER_BYTES) - 1}`);
+        bytes = new Uint8Array(await response.arrayBuffer());
+        start = response.status === 206 ? offset : 0;
+      }
+      return bytes.subarray(offset - start, offset - start + length);
+    }
+    const magic = await read(0, 4);
+    if (String.fromCharCode(...magic) !== "fLaC") return null;
+    let offset = 4;
+    let alternate = null;
+    for (let blocks = 0; blocks < 128; blocks += 1) {
+      const header = await read(offset, 4);
+      if (header.length < 4) return alternate;
+      const [flags, high, middle, low] = header;
+      const size = (high << 16) | (middle << 8) | low;
+      if ((flags & 0x7f) === 6) {
+        const picture = flacPicture(await read(offset + 4, size));
+        if (picture?.type === 3) return picture.cover;
+        alternate ||= picture?.cover || null;
+      }
+      if (flags & 0x80) return alternate;
+      offset += 4 + size;
+    }
+    return alternate;
   }
   function updateTrackRowTitle(row, track) {
     const title = trackTitle(track);
@@ -617,10 +665,19 @@
       const track = state.artworkQueue.shift();
       const folder = state.libraryFolder;
       state.activeArtworkDownloads += 1;
-      readMp3Artwork(track).then((cover) => {
+      const readArtwork = /\.flac$/i.test(track.name) ? readFlacArtwork : readMp3Artwork;
+      readArtwork(track).then((cover) => {
         if (folder !== state.libraryFolder) return;
         state.completedMetadata.add(track.id);
-        if (!cover) return;
+        if (!cover) {
+          const images = state.artworkElements.get(track.id);
+          for (const image of [...(images || [])]) {
+            if (!image.isConnected || !image._flurbArtworkMissing) continue;
+            images.delete(image);
+            image._flurbArtworkMissing();
+          }
+          return;
+        }
         const link = URL.createObjectURL(cover);
         state.artworkLinks.set(track.id, link);
         state.artworkElements.get(track.id)?.forEach((image) => {
@@ -657,9 +714,10 @@
 
   function applyCloudSnapshot(snapshot, config) {
     if (config !== state.cloud || snapshot.generation <= (state.cloudSnapshot?.generation ?? -1)) return;
-    const scroll = window.matchMedia("(max-width: 699px)").matches ? els.trackList : document.scrollingElement;
+    const scroll = catalogScroller();
     const offset = scroll.scrollTop;
     state.cloudSnapshot = snapshot;
+    state.recentAlbumCache = null;
     state.catalog = new Map();
     state.catalogFolders = new Map();
     state.favorites = new Set();
@@ -681,6 +739,7 @@
     if (!state.catalogFolders.has(state.folderPath)) {
       state.folderPath = state.folderHistory.reverse().find((folder) => state.catalogFolders.has(folder.path))?.path || CATALOG_ROOT;
       state.folderHistory = folderAncestors(state.folderPath);
+      state.recentGridReturn = null;
     }
     if (state.current && state.catalog.has(state.current.id)) {
       state.current = state.catalog.get(state.current.id);
@@ -773,10 +832,12 @@
     }
     state.cloud = config;
     state.cloudSnapshot = null;
+    state.recentAlbumCache = null;
     state.cloudStatus = config ? "Connecting to Turso…" : "";
     state.folderPath = CATALOG_ROOT;
     state.folderHistory = [];
     state.activePlaylistId = null;
+    state.recentGridReturn = null;
     state.libraryQueue = null;
     updateLibraryShuffleButton();
     hideNotice();
@@ -818,7 +879,11 @@
   }
   function visibleTracks() {
     if (state.viewMode === "favorites") return [...state.favorites].map((id) => state.catalog.get(id));
-    if (state.viewMode === "recent") return [...state.catalog.values()].sort(recentlyAdded);
+    if (state.viewMode === "recent") {
+      return state.folderPath === CATALOG_ROOT
+        ? [...state.catalog.values()].sort(recentlyAdded)
+        : state.tracks.slice().sort(albumTrackOrder);
+    }
     if (state.viewMode === "playlists") return state.playlists.find((playlist) => playlist.id === state.activePlaylistId)?.tracks || [];
     return state.tracks;
   }
@@ -878,12 +943,115 @@
       window.scrollBy({ top: offset, behavior: "smooth" });
     });
   }
+  const trackNumber = (value) => Number(value) || Number.MAX_SAFE_INTEGER;
+  function albumTrackOrder(a, b) {
+    return (Number(a.disc_number) || 1) - (Number(b.disc_number) || 1) ||
+      trackNumber(a.track_number) - trackNumber(b.track_number) ||
+      trackTitle(a).localeCompare(trackTitle(b), undefined, { numeric: true, sensitivity: "base" });
+  }
+  function catalogScroller() {
+    return window.matchMedia("(max-width: 699px)").matches ? els.trackList : document.scrollingElement;
+  }
+  function openRecentAlbum(album) {
+    state.recentGridReturn = {
+      top: catalogScroller().scrollTop,
+      query: els.search.value,
+      searchScroll: state.searchScroll,
+      limit: state.displayLimit
+    };
+    history.pushState({ flurbFolder: album.path }, "", location.href);
+    loadLibraryFolder(album.path);
+    catalogScroller().scrollTo({ top: 0, behavior: "instant" });
+  }
+  function returnToRecentGrid() {
+    const previous = state.recentGridReturn;
+    state.recentGridReturn = null;
+    state.folderPath = CATALOG_ROOT;
+    state.displayLimit = previous?.limit ?? 100;
+    els.search.value = previous?.query ?? "";
+    state.searchScroll = previous?.searchScroll ?? null;
+    syncSearchState();
+    refreshCatalogView(false);
+    catalogScroller().scrollTo({ top: previous?.top ?? 0, behavior: "instant" });
+  }
+  function buildRecentAlbums() {
+    const albums = new Map();
+    for (const track of state.catalog.values()) {
+      const path = albumPath(track);
+      if (!albums.has(path)) {
+        albums.set(path, {
+          path, name: track.album?.trim() || "Unknown Album", artist: artistName(track),
+          added: addedDate(track), tracks: []
+        });
+      }
+      const album = albums.get(path);
+      album.added = Math.max(album.added, addedDate(track));
+      album.tracks.push(track);
+    }
+    return [...albums.values()].sort((a, b) => b.added - a.added || a.name.localeCompare(b.name));
+  }
+  function recentAlbums(query) {
+    state.recentAlbumCache ??= buildRecentAlbums();
+    if (!query) return state.recentAlbumCache;
+    return state.recentAlbumCache.filter((album) =>
+      [album.name, album.artist].some((name) => name.toLocaleLowerCase().includes(query)) ||
+      album.tracks.some((track) => trackTitle(track).toLocaleLowerCase().includes(query)));
+  }
+  function makeRecentAlbumTile(album) {
+    const item = document.createElement("div");
+    item.setAttribute("role", "listitem");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "recent-album-cover";
+    button.setAttribute("aria-label", `Open ${album.name} by ${album.artist}`);
+    const image = document.createElement("img");
+    image.alt = "";
+    const fallback = document.createElement("span");
+    fallback.className = "recent-album-label";
+    fallback.setAttribute("aria-hidden", "true");
+    const title = document.createElement("strong");
+    title.textContent = album.name;
+    const artist = document.createElement("span");
+    artist.textContent = album.artist;
+    fallback.append(title, artist);
+    button.append(image, fallback);
+    item.append(button);
+    button.addEventListener("click", () => openRecentAlbum(album));
+    const cached = album.tracks.find((track) => state.artworkLinks.has(track.id));
+    if (cached) registerTrackArtwork(image, cached);
+    else {
+      const candidates = album.tracks.filter((track) => supportsArtwork(track) && !state.completedMetadata.has(track.id))
+        .sort(albumTrackOrder).slice(0, 3);
+      image._flurbArtworkMissing = () => {
+        const next = candidates.shift();
+        if (next) registerTrackArtwork(image, next);
+      };
+      image._flurbArtworkMissing();
+    }
+    return item;
+  }
+  function observeMoreRows(count) {
+    if (count <= state.displayLimit) return;
+    const row = document.createElement("div");
+    row.className = "list-sentinel";
+    row.setAttribute("aria-hidden", "true");
+    els.tableBody.append(row);
+    state.listObserver = new IntersectionObserver((items) => {
+      if (!items.some((item) => item.isIntersecting)) return;
+      state.listObserver?.disconnect();
+      state.displayLimit += 100;
+      renderTracks(false);
+    }, { rootMargin: "500px 0px" });
+    state.listObserver.observe(row);
+  }
   function renderTracks(scrollSearch = true) {
     setLibraryLoading(false);
     state.listObserver?.disconnect();
     state.artworkObserver?.disconnect();
     state.artworkElements.clear();
     els.tableBody.replaceChildren();
+    const showAlbumGrid = Boolean(state.cloudSnapshot && state.viewMode === "recent" && state.folderPath === CATALOG_ROOT);
+    els.trackList.classList.toggle("is-recent-albums", showAlbumGrid);
     els.emptyState.hidden = true;
     if (!state.cloud) {
       els.emptyState.hidden = false;
@@ -894,6 +1062,18 @@
     els.settingsLink.hidden = true;
     if (!state.cloudSnapshot) { setLibraryLoading(true); return; }
     const query = els.search.value.trim().toLocaleLowerCase();
+    if (showAlbumGrid) {
+      const albums = recentAlbums(query);
+      els.trackCount.textContent = `· ${albums.length} album${albums.length === 1 ? "" : "s"}`;
+      if (!albums.length) {
+        els.emptyState.hidden = false;
+        els.emptyState.querySelector("p").textContent = query ? "No results" : "No albums";
+        return;
+      }
+      for (const album of albums.slice(0, state.displayLimit)) els.tableBody.append(makeRecentAlbumTile(album));
+      observeMoreRows(albums.length);
+      return;
+    }
     const tracks = filteredTracks();
     const folders = state.entries.filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
     els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"} · ${folders.length} folder${folders.length === 1 ? "" : "s"}`;
@@ -921,9 +1101,8 @@
       ...folders.map((folder) => ({ kind: "folder", item: folder })),
       ...tracks.map((track) => ({ kind: "track", item: track }))
     ];
-    if (state.viewMode !== "playlists") rows.sort((a, b) => state.viewMode === "recent"
-      ? recentlyAdded(a.item, b.item)
-      : (a.kind === "track" ? trackTitle(a.item) : a.item.name).localeCompare(
+    if (state.viewMode !== "playlists" && state.viewMode !== "recent") rows.sort((a, b) =>
+      (a.kind === "track" ? trackTitle(a.item) : a.item.name).localeCompare(
         b.kind === "track" ? trackTitle(b.item) : b.item.name, undefined, { numeric: true, sensitivity: "base" }));
 
     if (!rows.length) {
@@ -942,19 +1121,7 @@
       else els.tableBody.append(kind === "folder" ? makeFolderRow(item, index) : makeTrackRow(item, index));
     });
     renderLucideIcons(els.tableBody);
-    const remaining = renderedRows.length - state.displayLimit;
-    if (remaining > 0) {
-      const row = document.createElement("div");
-      row.className = "list-sentinel";
-      els.tableBody.append(row);
-      state.listObserver = new IntersectionObserver((items) => {
-        if (!items.some((item) => item.isIntersecting)) return;
-        state.listObserver?.disconnect();
-        state.displayLimit += 100;
-        renderTracks();
-      }, { rootMargin: "500px 0px" });
-      state.listObserver.observe(row);
-    }
+    observeMoreRows(renderedRows.length);
     if (scrollSearch && query && atViewRoot) scrollToSearchLetter();
   }
   function playlistModified(id, now) {
