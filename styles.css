@@ -1268,7 +1268,7 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 
 /* Keep mobile scrolling inside the list, never inside the page viewport. */
 @media (max-width: 699px) {
-  html, body { width: 100%; height: 100%; overflow: hidden; }
+  html.player-page, .player-page body { width: 100%; height: 100%; overflow: hidden; }
   .app-shell { height: 100dvh; min-height: 0; overflow: hidden; padding-bottom: 0 !important; }
   .app-shell > main { height: 100%; overflow: hidden; }
   .library { height: 100%; min-height: 0; overflow: hidden; padding: 0 !important; }
@@ -1288,29 +1288,44 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
     padding-bottom: 1rem;
   }
   body.is-keyboard-open .track-list { bottom: var(--visual-viewport-bottom, 0px); }
-  .player { bottom: var(--visual-viewport-bottom, 0px); }
   body.is-keyboard-open .player { display: none !important; }
   .notice { position: fixed; z-index: 80; top: calc(var(--visual-viewport-top, 0px) + var(--library-sticky-height, 149px)); right: 10px; left: 10px; }
 }
 
 
-/* Shuffle and repeat only change their glyph color while pressed. */
-#shuffle-button,
-#repeat-button,
-#shuffle-button:hover:not(:disabled),
-#repeat-button:hover:not(:disabled),
-#shuffle-button:active,
-#repeat-button:active,
-#shuffle-button:focus,
-#repeat-button:focus,
-#shuffle-button:focus-visible,
-#repeat-button:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-  border-color: transparent !important;
-  background: transparent !important;
+.breadcrumb-row { display: flex; align-items: center; gap: var(--top-control-gap); }
+.breadcrumb-row .breadcrumbs { flex: 1 1 0; }
+.shuffle-library {
+  flex: 0 0 auto;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  color: #fff;
+  background: transparent;
+  font: 500 .62rem/1 var(--mono);
+  cursor: pointer;
+}
+.shuffle-library:disabled { opacity: .55; cursor: wait; }
+
+:root { --player-surface: #1c1e20; }
+.search-box, .player { background: var(--player-surface); }
+.player { backdrop-filter: none; }
+.player .transport button,
+.player #now-favorite {
+  color: #808286;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transition: none;
   -webkit-tap-highlight-color: transparent;
 }
-#shuffle-button:active:not(:disabled),
-#repeat-button:active:not(:disabled) { color: #fff !important; }
+.player .transport button.active,
+.player .transport button:active:not(:disabled),
+.player .transport .play-button,
+.player #now-favorite.active,
+.player #now-favorite:active:not(:disabled) { color: #fff !important; }
+.player #now-favorite:not(.active):not(:active) { color: #808286; }
+.player .transport button:focus-visible,
+.player #now-favorite:focus-visible { outline: 1px solid #fff !important; outline-offset: -2px; }
 .transport { grid-area: transport; }

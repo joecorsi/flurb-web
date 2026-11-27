@@ -7,7 +7,7 @@
     if (window.lucide?.createIcons) window.lucide.createIcons({ root });
   }
   const els = {
-    audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"),
+    audio: $("#audio"), search: $("#search"), clearSearch: $("#clear-search"), home: $("#home-button"), breadcrumbs: $("#breadcrumbs"), shuffleLibrary: $("#shuffle-library"),
     librarySticky: $("#library-sticky"), playerArtworkButton: $("#player-artwork-button"), playerArtwork: $("#player-artwork"), playerArtworkShell: $("#player-artwork-shell"),
     artworkViewer: $("#artwork-viewer"), artworkViewerImage: $("#artwork-viewer-image"), artworkViewerCover: $("#artwork-viewer-cover"),
     settingsButton: $("#settings-button"), settingsOverlay: $("#settings-overlay"), settingsClose: $("#settings-close"), nowPlayingLink: $("#now-playing-link"), nowTitleViewport: $("#now-title-viewport"), emptyGlyph: $(".empty-glyph"),
@@ -45,10 +45,13 @@
     entries: [],
     tracks: [],
     displayLimit: 100,
+    searchScroll: null,
     current: null,
     viewerTrack: null,
     loadingTrack: false,
     shuffle: false,
+    libraryQueue: null,
+    libraryShuffleRequest: 0,
     repeat: "off",
     favorites: new Set(JSON.parse(localStorage.getItem("flurb.dropbox.favorites") || "[]")),
     favoriteItems: new Map(),
@@ -321,6 +324,12 @@
     els.home.setAttribute("aria-label", els.home.title);
   }
   function setViewMode(view) {
+    if (view !== state.viewMode) {
+      els.search.value = "";
+      state.searchScroll = null;
+      syncSearchState();
+      els.clearSearch.disabled = true;
+    }
     state.viewMode = view;
     state.activePlaylistId = null;
     state.folderHistory = [];
@@ -362,6 +371,8 @@
   const hasId3ArtworkSupport = (track) => track.name.toLowerCase().endsWith(".mp3");
   function renderBreadcrumbs() {
     els.breadcrumbs.replaceChildren();
+    els.shuffleLibrary.hidden = state.viewMode !== "library" || state.folderPicker ||
+      !state.libraryFolder?.path_lower || state.folderPath !== state.libraryFolder.path_lower;
     const scroller = document.createElement("span");
     scroller.className = "breadcrumbs-path";
     els.breadcrumbs.append(scroller);
@@ -612,6 +623,9 @@
   }
   async function openFolderPicker() {
     state.navigationRequest += 1;
+    state.playRequest += 1;
+    state.libraryShuffleRequest += 1;
+    state.libraryQueue = null;
     els.audio.pause();
     els.audio.removeAttribute("src");
     els.audio.load();
@@ -625,12 +639,14 @@
     updateTransport();
     state.folderPicker = true;
     state.folderHistory = [];
-    els.breadcrumbs.replaceChildren();
+    renderBreadcrumbs();
     els.search.disabled = true;
     state.folderPath = "";
     state.folderName = "Choose a folder";
     state.displayLimit = 100;
     els.search.value = "";
+    state.searchScroll = null;
+    syncSearchState();
     state.entries = [];
     state.tracks = [];
     els.tableBody.replaceChildren();
@@ -665,7 +681,10 @@
     path = path || root;
     if (!(path === root || path.startsWith(`${root}/`))) throw new Error("That folder is outside the selected Flurb library.");
     const request = ++state.navigationRequest;
-    if (path !== state.folderPath) els.search.value = "";
+    if (path !== state.folderPath) {
+      els.search.value = "";
+      state.searchScroll = null;
+    }
     syncSearchState();
     els.clearSearch.disabled = !els.search.value;
     state.folderPicker = false;
@@ -760,6 +779,7 @@
     const first = searchLetter();
     if (!first) return;
     requestAnimationFrame(() => {
+      if (first !== searchLetter()) return;
       const target = [...els.tableBody.querySelectorAll(".library-letter-row")].find((row) => row.dataset.letter === first);
       if (!target) return;
       if (window.matchMedia("(max-width: 699px)").matches) {
@@ -1000,9 +1020,11 @@
     });
     return row;
   }
-  async function playTrack(track) {
+  async function playTrack(track, libraryQueue = null) {
     if (!state.token) return toast("Open Dropbox setup first");
     if (!isInsideLibrary(track)) return showNotice("That track is outside the selected Flurb folder.", "error");
+    state.libraryShuffleRequest += 1;
+    state.libraryQueue = libraryQueue;
     const requestId = ++state.playRequest;
     els.audio.pause();
     state.loadingTrack = true;
@@ -1035,19 +1057,46 @@
       }
     }
   }
+  function setShuffle(enabled) {
+    state.shuffle = enabled;
+    els.shuffle.classList.toggle("active", enabled);
+    els.shuffle.setAttribute("aria-label", `Shuffle ${enabled ? "on" : "off"}`);
+    els.shuffle.setAttribute("aria-pressed", String(enabled));
+  }
+  async function shuffleLibrary() {
+    const root = state.libraryFolder;
+    if (!root || els.shuffleLibrary.hidden) return;
+    const request = ++state.libraryShuffleRequest;
+    els.shuffleLibrary.disabled = true;
+    try {
+      const entries = await listFolder(root.path_lower, true);
+      if (request !== state.libraryShuffleRequest || state.libraryFolder?.id !== root.id) return;
+      const tracks = entries.filter((entry) => isAudio(entry) && isInsideLibrary(entry));
+      if (!tracks.length) return toast("No playable tracks in this library");
+      setShuffle(true);
+      const track = tracks[Math.floor(Math.random() * tracks.length)];
+      await playTrack(track, tracks);
+    } catch (error) {
+      if (request === state.libraryShuffleRequest) showNotice(friendlyError(error), "error");
+    } finally {
+      els.shuffleLibrary.disabled = false;
+    }
+  }
   function playNext(direction = 1) {
-    const playlist = visibleTracks();
+    const playlist = state.libraryQueue || visibleTracks();
     if (!playlist.length) return;
     const currentIndex = playlist.findIndex((track) => track.id === state.current?.id);
     let nextIndex;
     if (state.shuffle && direction > 0 && playlist.length > 1) {
-      do { nextIndex = Math.floor(Math.random() * playlist.length); } while (nextIndex === currentIndex);
+      const choices = playlist.length - (currentIndex >= 0 ? 1 : 0);
+      nextIndex = Math.floor(Math.random() * choices);
+      if (currentIndex >= 0 && nextIndex >= currentIndex) nextIndex += 1;
     } else if (currentIndex < 0) {
       nextIndex = direction > 0 ? 0 : playlist.length - 1;
     } else {
       nextIndex = (currentIndex + direction + playlist.length) % playlist.length;
     }
-    playTrack(playlist[nextIndex]);
+    playTrack(playlist[nextIndex], state.libraryQueue);
   }
   function registerMediaSessionActions() {
     const session = navigator.mediaSession;
@@ -1082,16 +1131,26 @@
     els.nowFavorite.setAttribute("aria-label", active ? "Remove current track from favorites" : "Favorite current track");
   }
   let keyboardBaselineHeight = window.visualViewport?.height || window.innerHeight;
-  function syncSearchState(forceKeyboardClosed = false) {
-    const searchFocused = document.activeElement === els.search;
+  let keyboardOpen = false;
+  function syncSearchState() {
     document.body.classList.toggle("is-searching", Boolean(els.search.value.trim()));
     const viewport = window.visualViewport;
-    const mobile = window.matchMedia("(max-width: 699px)").matches;
-    if (viewport && (!searchFocused || forceKeyboardClosed)) keyboardBaselineHeight = viewport.height;
-    const baseline = Math.max(keyboardBaselineHeight, viewport?.height || 0);
-    const keyboardOpen = Boolean(!forceKeyboardClosed && mobile && searchFocused && viewport &&
-      baseline - viewport.height > Math.max(120, baseline * 0.2));
-    if (viewport && searchFocused && !keyboardOpen) keyboardBaselineHeight = viewport.height;
+    if (!viewport || !window.matchMedia("(max-width: 699px)").matches) {
+      keyboardOpen = false;
+      keyboardBaselineHeight = viewport?.height || window.innerHeight;
+    } else {
+      const heightLost = keyboardBaselineHeight - viewport.height;
+      const bottomInset = window.innerHeight - viewport.offsetTop - viewport.height;
+      if (keyboardOpen) {
+        // Blur can fire before Safari has moved the visual viewport back down.
+        keyboardOpen = heightLost > 70 || bottomInset > 40;
+      } else if (document.activeElement === els.search) {
+        keyboardOpen = heightLost > 100 || bottomInset > 100;
+        keyboardBaselineHeight = Math.max(keyboardBaselineHeight, viewport.height);
+      } else {
+        keyboardBaselineHeight = viewport.height;
+      }
+    }
     document.body.classList.toggle("is-keyboard-open", keyboardOpen);
   }
   function syncMobileViewport() {
@@ -1156,14 +1215,27 @@
     }
     updateTransport();
   }
-  els.search.addEventListener("input", () => {
+  function updateSearchResults() {
+    const searching = Boolean(els.search.value.trim());
+    const scroller = window.matchMedia("(max-width: 699px)").matches
+      ? els.trackList : document.scrollingElement;
     els.clearSearch.disabled = !els.search.value;
     syncSearchState();
-    state.displayLimit = 100;
-    renderTracks();
-  });
-  els.search.addEventListener("focus", () => syncSearchState());
-  els.search.addEventListener("blur", () => syncSearchState(true));
+    if (searching) {
+      state.searchScroll ??= { top: scroller.scrollTop, limit: state.displayLimit };
+      state.displayLimit = 100;
+      renderTracks();
+    } else {
+      const saved = state.searchScroll;
+      state.searchScroll = null;
+      if (saved) state.displayLimit = saved.limit;
+      renderTracks();
+      if (saved) scroller.scrollTo({ top: saved.top, behavior: "instant" });
+    }
+  }
+  els.search.addEventListener("input", updateSearchResults);
+  els.search.addEventListener("focus", syncSearchState);
+  els.search.addEventListener("blur", scheduleViewportSync);
   window.visualViewport?.addEventListener("resize", scheduleViewportSync);
   window.visualViewport?.addEventListener("scroll", scheduleViewportSync);
   window.addEventListener("resize", scheduleViewportSync);
@@ -1178,10 +1250,7 @@
   els.clearSearch.addEventListener("pointerdown", (event) => event.preventDefault());
   els.clearSearch.addEventListener("click", () => {
     els.search.value = "";
-    els.clearSearch.disabled = true;
-    syncSearchState();
-    state.displayLimit = 100;
-    renderTracks();
+    updateSearchResults();
   });
   els.viewButton.addEventListener("click", () => {
     els.viewMenu.hidden = !els.viewMenu.hidden;
@@ -1289,10 +1358,10 @@
     else playNext(-1);
   });
   els.next.addEventListener("click", () => playNext(1));
+  els.shuffleLibrary.addEventListener("click", shuffleLibrary);
   els.shuffle.addEventListener("click", () => {
-    state.shuffle = !state.shuffle;
-    els.shuffle.classList.toggle("active", state.shuffle);
-    els.shuffle.setAttribute("aria-label", `Shuffle ${state.shuffle ? "on" : "off"}`);
+    state.libraryShuffleRequest += 1;
+    setShuffle(!state.shuffle);
     toast(`Shuffle ${state.shuffle ? "on" : "off"}`);
   });
   els.repeat.addEventListener("click", () => {
@@ -1316,8 +1385,11 @@
   els.audio.addEventListener("pause", () => { updateTransport(); renderTracks(); });
   els.audio.addEventListener("ended", () => {
     if (state.repeat === "one") { els.audio.currentTime = 0; els.audio.play(); }
-    else if (state.repeat === "all" || state.shuffle || visibleTracks().findIndex((t) => t.id === state.current?.id) < visibleTracks().length - 1) playNext(1);
-    else updateTransport();
+    else {
+      const playlist = state.libraryQueue || visibleTracks();
+      if (state.repeat === "all" || state.shuffle || playlist.findIndex((t) => t.id === state.current?.id) < playlist.length - 1) playNext(1);
+      else updateTransport();
+    }
   });
   els.audio.addEventListener("error", () => {
     if (state.current && !els.audio.paused) showNotice("The audio stream was interrupted. Try playing the track again.", "error");
