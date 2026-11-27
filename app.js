@@ -762,6 +762,12 @@
     requestAnimationFrame(() => {
       const target = [...els.tableBody.querySelectorAll(".library-letter-row")].find((row) => row.dataset.letter === first);
       if (!target) return;
+      if (document.body.classList.contains("is-searching")) {
+        const listRect = els.trackList.getBoundingClientRect();
+        const targetTop = target.getBoundingClientRect().top - listRect.top + els.trackList.scrollTop;
+        els.trackList.scrollTo({ top: targetTop, behavior: "smooth" });
+        return;
+      }
       const sticky = document.querySelector(".library-sticky");
       const offset = target.getBoundingClientRect().top - (sticky?.getBoundingClientRect().height || 0);
       window.scrollBy({ top: offset, behavior: "smooth" });
@@ -1126,13 +1132,13 @@
   });
   els.search.addEventListener("focus", syncSearchState);
   els.search.addEventListener("blur", syncSearchState);
+  els.clearSearch.addEventListener("pointerdown", (event) => event.preventDefault());
   els.clearSearch.addEventListener("click", () => {
     els.search.value = "";
     els.clearSearch.disabled = true;
     syncSearchState();
     state.displayLimit = 100;
     renderTracks();
-    els.search.focus();
   });
   els.viewButton.addEventListener("click", () => {
     els.viewMenu.hidden = !els.viewMenu.hidden;
