@@ -883,7 +883,18 @@ body.is-embedded .settings-back { display: none; }
 
 /* Rows stay flat while their divider reaches both screen edges. */
 .library-row { position: relative; border-bottom-color: transparent; }
-.library-row::after { position: absolute; right: 0; bottom: 0; left: -10px; height: 1px; background: #303235; content: ""; pointer-events: none; }
+.library-row::after,
+.track-rows > :is(.playlist-create, .library-letter-row):first-child::before {
+  position: absolute;
+  right: 0;
+  left: -10px;
+  height: 1px;
+  background: #303235;
+  content: "";
+  pointer-events: none;
+}
+.library-row::after { bottom: 0; }
+.track-rows > :is(.playlist-create, .library-letter-row):first-child::before { top: 0; }
 .library-row {
   outline: none !important;
   box-shadow: none !important;
@@ -1561,7 +1572,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .track-count {
   display: grid;
   box-sizing: border-box;
-  height: 20px;
+  height: var(--track-count-height);
   place-items: center;
   margin-inline-start: -10px;
   color: #a0a0a2;
@@ -1571,4 +1582,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .track-list.is-recent-albums .track-count { margin-inline-end: -10px; }
 
 /* Keep the final row clear of the player with the totals bar in the scroll area. */
-.track-list { padding-block-end: calc(1rem + 20px); }
+.track-list {
+  --track-count-height: 20px;
+  padding-block: 0 calc(1rem + var(--track-count-height));
+}
