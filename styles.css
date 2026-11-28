@@ -1568,4 +1568,4 @@ html { -webkit-tap-highlight-color: transparent; }
   font: 500 .75rem/1 var(--sans);
 }
 .track-count[hidden] { display: none; }
-.track-list.is-recent-albums .track-count { margin: -10px -10px 10px; }
+.track-list.is-recent-albums .track-count { margin: -5px -10px 5px; }

@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE = "flurb-shell-v28";
+const CACHE = "flurb-shell-v29";
 const FILES = [
   "./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js",
   "./artwork-cache.js", "./offline-audio.js", "./playback-queue.js", "./styles.css",
