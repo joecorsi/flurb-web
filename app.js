@@ -634,11 +634,36 @@
     }
     return null;
   }
-  function setArtworkImage(image, link, trackId) {
+  function showArtworkImage(image, link, trackId) {
     image._flurbArtworkId = trackId;
     image.src = link;
     image.classList.add("has-artwork");
     image.parentElement?.classList.add("has-artwork");
+  }
+  function clearArtworkImage(image) {
+    image._flurbArtworkPending = null;
+    image._flurbArtworkId = null;
+    image.removeAttribute("src");
+    image.classList.remove("has-artwork");
+    image.parentElement?.classList.remove("has-artwork");
+  }
+  function setArtworkImage(image, link, trackId) {
+    if (!image._flurbArtworkMissing) {
+      showArtworkImage(image, link, trackId);
+      return;
+    }
+    if (image.getAttribute("src") === link || image._flurbArtworkPending?.link === link) return;
+    const pending = { link, trackId };
+    image._flurbArtworkPending = pending;
+    const incoming = new Image();
+    incoming.src = link;
+    incoming.decode().then(() => {
+      if (image._flurbArtworkPending === pending && state.artworkLinks.get(trackId) === link) {
+        showArtworkImage(image, link, trackId);
+      }
+    }).catch(() => {}).finally(() => {
+      if (image._flurbArtworkPending === pending) image._flurbArtworkPending = null;
+    });
   }
   function registerTrackArtwork(image, track) {
     image._flurbTrack = track;
@@ -824,17 +849,15 @@
     const bound = state.artworkElements.get(track.id);
     const images = new Set(bound);
     const albumImage = state.recentArtworkElements.get(recentAlbumPath(track));
-    if (albumImage && (!albumImage._flurbArtworkId || albumImage._flurbArtworkId === track.id)) images.add(albumImage);
+    if (albumImage) images.add(albumImage);
     for (const image of images) {
-      if (!image.isConnected || (image._flurbArtworkId && image._flurbArtworkId !== track.id)) continue;
+      const selectedId = image._flurbArtworkPending?.trackId || image._flurbArtworkId;
+      if (!image.isConnected || (selectedId !== track.id && state.artworkLinks.has(selectedId))) continue;
       if (link) {
         state.artworkObserver?.unobserve(image);
         setArtworkImage(image, link, track.id);
       } else {
-        image._flurbArtworkId = null;
-        image.removeAttribute("src");
-        image.classList.remove("has-artwork");
-        image.parentElement?.classList.remove("has-artwork");
+        clearArtworkImage(image);
         if (image._flurbArtworkMissing) {
           bound?.delete(image);
           image._flurbArtworkMissing();
@@ -1291,6 +1314,7 @@
     }
     saveViewScroll();
     state.cloud = config;
+    recentAlbumTiles.clear();
     state.cloudSnapshot = null;
     state.recentAlbumCache = null;
     state.cloudStatus = "";
@@ -1529,6 +1553,12 @@
     const previous = state.recentAlbumWindow;
     if (previous?.source !== source || previous.cutoff !== cutoff) {
       const albums = source.filter((album) => album.added >= cutoff);
+      if (recentAlbumTiles.size) {
+        const paths = new Set(albums.map((album) => album.path));
+        for (const path of recentAlbumTiles.keys()) {
+          if (!paths.has(path)) recentAlbumTiles.delete(path);
+        }
+      }
       let trackCount = 0;
       for (const album of albums) {
         for (const track of album.tracks) {
@@ -1559,39 +1589,55 @@
       scroll.scrollTo({ top, behavior: "instant" });
     }
   }
-  function makeRecentAlbumTile(album) {
+  const recentAlbumTiles = new Map();
+  function recentAlbumTile(album) {
+    let tile = recentAlbumTiles.get(album.path);
+    if (!tile) {
+      tile = makeRecentAlbumTile();
+      recentAlbumTiles.set(album.path, tile);
+    }
+    const { item, button, image, title, artist } = tile;
+    if (tile.album !== album) {
+      tile.album = album;
+      button.setAttribute("aria-label", album.unknownAlbum
+        ? `Open ${album.name} by ${album.artist} (Unknown Album)`
+        : `Open ${album.name} by ${album.artist}`);
+      title.textContent = album.name;
+      artist.textContent = album.unknownAlbum ? `Unknown Album · ${album.artist}` : album.artist;
+      image._flurbArtworkCandidates = artworkCandidates(album);
+    }
+    state.recentArtworkElements.set(album.path, image);
+    image._flurbArtworkMissing();
+    return item;
+  }
+  function makeRecentAlbumTile() {
     const item = document.createElement("div");
     item.setAttribute("role", "listitem");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "recent-album-cover";
-    const subtitle = album.unknownAlbum ? `Unknown Album · ${album.artist}` : album.artist;
-    button.setAttribute("aria-label", album.unknownAlbum
-      ? `Open ${album.name} by ${album.artist} (Unknown Album)`
-      : `Open ${album.name} by ${album.artist}`);
     const image = document.createElement("img");
     image.alt = "";
-    state.recentArtworkElements.set(album.path, image);
     const fallback = document.createElement("span");
     fallback.className = "recent-album-label";
     fallback.setAttribute("aria-hidden", "true");
     const title = document.createElement("strong");
-    title.textContent = album.name;
     const artist = document.createElement("span");
-    artist.textContent = subtitle;
     fallback.append(title, artist);
     button.append(image, fallback);
     item.append(button);
-    button.addEventListener("click", () => openRecentAlbum(album));
-    const candidates = artworkCandidates(album);
-    image._flurbArtworkCandidates = candidates;
+    const tile = { item, button, image, title, artist, album: null };
+    button.addEventListener("click", () => openRecentAlbum(tile.album));
     image._flurbArtworkMissing = () => {
-      const cached = album.tracks.find((track) => state.artworkLinks.has(track.id));
-      const next = cached || candidates.find((track) => !state.completedMetadata.has(track.id));
+      const tracks = tile.album.tracks;
+      const selectedId = image._flurbArtworkPending?.trackId || image._flurbArtworkId;
+      const cached = (state.artworkLinks.has(selectedId) && tracks.find((track) => track.id === selectedId)) ||
+        tracks.find((track) => state.artworkLinks.has(track.id));
+      const next = cached || image._flurbArtworkCandidates.find((track) => !state.completedMetadata.has(track.id));
       if (next) registerTrackArtwork(image, next);
+      else if (image._flurbArtworkId) clearArtworkImage(image);
     };
-    image._flurbArtworkMissing();
-    return item;
+    return tile;
   }
   function observeMoreRows(count, appendPage) {
     if (count <= state.displayLimit) return;
@@ -1680,7 +1726,7 @@
         return;
       }
       const appendAlbums = (start) => {
-        for (const album of albums.slice(start, state.displayLimit)) els.tableBody.append(makeRecentAlbumTile(album));
+        for (const album of albums.slice(start, state.displayLimit)) els.tableBody.append(recentAlbumTile(album));
       };
       appendAlbums(0);
       observeMoreRows(albums.length, appendAlbums);
@@ -2599,6 +2645,7 @@
     for (const queued of state.artworkQueue.splice(0)) state.artworkLoading.delete(queued.id);
     for (const link of state.artworkLinks.values()) URL.revokeObjectURL(link);
     state.artworkLinks.clear();
+    recentAlbumTiles.clear();
     updatePlayerArtwork(state.current);
     configureOfflineAudio();
     renderTracks();
