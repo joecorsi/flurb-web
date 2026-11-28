@@ -1,40 +1,51 @@
 "use strict";
 
-const CACHE = "flurb-shell-v26";
-const FILES = ["./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js", "./artwork-cache.js", "./offline-audio.js", "./playback-queue.js", "./styles.css", "./favicon.png", "./apple-touch-icon.png"];
+const CACHE = "flurb-shell-v27";
+const FILES = [
+  "./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js",
+  "./artwork-cache.js", "./offline-audio.js", "./playback-queue.js", "./styles.css",
+  "./favicon.png", "./apple-touch-icon.png"
+];
 const scope = new URL(self.registration.scope);
-const paths = new Set(FILES.map((file) => new URL(file, scope).pathname));
+const shell = new Map(FILES.map((file) => {
+  const url = new URL(file, scope);
+  return [url.pathname, url.href];
+}));
+const index = new URL("./index.html", scope).href;
+const oauthParameters = ["code", "state", "error", "error_description"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES)));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await cache.addAll([...shell.values()].map((url) => new Request(url, { cache: "reload" })));
+  })());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.keys().then((keys) =>
-    Promise.all(keys.filter((key) => key.startsWith("flurb-shell-") && key !== CACHE).map((key) => caches.delete(key)))));
+  event.waitUntil((async () => {
+    for (const key of await caches.keys()) {
+      if (key.startsWith("flurb-shell-") && key !== CACHE) await caches.delete(key);
+    }
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== scope.origin || (!paths.has(url.pathname) && url.pathname !== scope.pathname)) return;
-  const fallback = url.pathname === scope.pathname ? new URL("./index.html", scope) : url;
+  if (url.origin !== scope.origin || oauthParameters.some((parameter) => url.searchParams.has(parameter))) return;
+  const key = url.pathname === scope.pathname && request.mode === "navigate" ? index : shell.get(url.pathname);
+  if (!key) return;
+
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    try {
-      const response = await fetch(request);
-      if (response.ok) {
-        // Store the shell route without query parameters, including OAuth callbacks.
-        const key = new URL(fallback);
-        key.search = "";
-        event.waitUntil(cache.put(key, response.clone()).catch(() => {}));
-      }
-      return response;
-    } catch (error) {
-      const saved = await cache.match(fallback, { ignoreSearch: true });
-      if (saved) return saved;
-      throw error;
-    }
+    const cache = await caches.open(CACHE).catch(() => null);
+    const saved = await cache?.match(key).catch(() => null);
+    if (saved) return saved;
+
+    // Repair a missing shell entry when the network is available.
+    const response = await fetch(key);
+    if (response.ok && cache) await cache.put(key, response.clone()).catch(() => {});
+    return response;
   })());
 });
