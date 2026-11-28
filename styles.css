@@ -1586,3 +1586,5 @@ html { -webkit-tap-highlight-color: transparent; }
   --track-count-height: 20px;
   padding-block: 0 calc(1rem + var(--track-count-height));
 }
+
+.track-rows { padding-bottom: var(--letter-search-space, 0px); }

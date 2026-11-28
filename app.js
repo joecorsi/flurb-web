@@ -350,6 +350,7 @@
     localStorage.setItem("flurb.dropbox.actionView", view.view);
     syncSearchState();
     refreshCatalogView(false, Number.isFinite(view.top) ? { top: view.top, limit: view.limit } : null);
+    if (view.query && Number.isFinite(view.top)) scrollToSearchLetter(view.top);
   }
   function installHistoryNavigation() {
     history.scrollRestoration = "manual";
@@ -1400,25 +1401,31 @@
     return ordered;
   }
   function searchLetter() {
-    const first = els.search.value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").charAt(0).toUpperCase();
-    return /^[A-Z]$/.test(first) ? first : "";
+    const query = els.search.value.trim();
+    return query ? libraryLetter(query) : "";
   }
-  function scrollToSearchLetter() {
-    const first = searchLetter();
-    if (!first) return;
-    requestAnimationFrame(() => {
-      if (first !== searchLetter()) return;
-      const target = [...els.tableBody.querySelectorAll(".library-letter-row")].find((row) => row.dataset.letter === first);
+  let searchScrollFrame;
+  function scrollToSearchLetter(savedTop = null) {
+    const context = playbackContext();
+    cancelAnimationFrame(searchScrollFrame);
+    searchScrollFrame = requestAnimationFrame(() => {
+      if (!els.search.value.trim() || context !== playbackContext()) return;
+      const first = searchLetter();
+      const target = els.tableBody.querySelector(`.library-letter-row[data-letter="${first}"]`) ||
+        els.tableBody.querySelector(".library-letter-row");
       if (!target) return;
-      if (window.matchMedia("(max-width: 699px)").matches) {
-        const listRect = els.trackList.getBoundingClientRect();
-        const targetTop = target.getBoundingClientRect().top - listRect.top + els.trackList.scrollTop;
-        els.trackList.scrollTo({ top: targetTop, behavior: "smooth" });
-        return;
-      }
-      const sticky = document.querySelector(".library-sticky");
-      const offset = target.getBoundingClientRect().top - (sticky?.getBoundingClientRect().height || 0);
-      window.scrollBy({ top: offset, behavior: "smooth" });
+      const scroller = catalogScroller();
+      const mobile = scroller === els.trackList;
+      const listRect = els.trackList.getBoundingClientRect();
+      const topEdge = mobile ? listRect.top : els.librarySticky.getBoundingClientRect().bottom;
+      const bottomEdge = mobile ? listRect.bottom : els.player.getBoundingClientRect().top;
+      els.tableBody.style.removeProperty("--letter-search-space");
+      const rowTop = target.getBoundingClientRect().top;
+      const resultsBelow = els.tableBody.getBoundingClientRect().bottom - rowTop;
+      const endPadding = parseFloat(getComputedStyle(els.trackList).paddingBottom) || 0;
+      const extra = Math.max(0, Math.ceil(bottomEdge - topEdge - resultsBelow - endPadding));
+      els.tableBody.style.setProperty("--letter-search-space", `${extra}px`);
+      scroller.scrollTo({ top: savedTop ?? scroller.scrollTop + rowTop - topEdge, behavior: "instant" });
     });
   }
   const trackNumber = (value) => Number(value) || Number.MAX_SAFE_INTEGER;
@@ -1649,6 +1656,9 @@
     state.artworkElements.clear();
     state.recentArtworkElements.clear();
     els.tableBody.replaceChildren();
+    const isLetterSearch = els.search.value.trim() && state.folderPath === CATALOG_ROOT &&
+      (state.viewMode === "library" || (state.viewMode === "playlists" && !state.activePlaylistId));
+    if (!isLetterSearch) els.tableBody.style.removeProperty("--letter-search-space");
     const showAlbumGrid = isRecentlyAddedGrid();
     els.trackList.classList.toggle("is-recent-albums", showAlbumGrid);
     els.emptyState.hidden = true;
@@ -1686,11 +1696,12 @@
       create.addEventListener("click", () => openNewPlaylist()); els.tableBody.append(create);
       const renderedPlaylists = playlistRows(query);
       const searchHeaderIndex = renderedPlaylists.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
-      if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 1;
+      if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 100;
       renderedPlaylists.slice(0, state.displayLimit).forEach(({ kind, item, letter }) => {
         if (kind === "letter") els.tableBody.append(makeLibraryLetterRow(letter));
         else els.tableBody.append(makePlaylistRow(item));
       });
+      if (!renderedPlaylists.length) els.tableBody.style.removeProperty("--letter-search-space");
       if (!state.playlists.length) { els.emptyState.hidden = false; els.emptyState.querySelector("p").textContent = "No playlists"; }
       if (scrollSearch && query) scrollToSearchLetter();
       return;
@@ -1701,13 +1712,14 @@
 
     if (state.viewMode === "library" && !atViewRoot && !folders.length) filteredView.libraryRows = rows;
     if (!rows.length) {
+      els.tableBody.style.removeProperty("--letter-search-space");
       els.emptyState.hidden = false;
       els.emptyState.querySelector("p").textContent = query ? "No results" : state.viewMode === "favorites" ? "No favorites" : state.viewMode === "playlists" ? "This playlist is empty" : "No tracks";
       els.emptyState.querySelector("span").textContent = "";
       return;
     }
     const searchHeaderIndex = rows.findIndex((row) => row.kind === "letter" && row.letter === searchLetter());
-    if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 1;
+    if (searchHeaderIndex >= state.displayLimit) state.displayLimit = searchHeaderIndex + 100;
     const appendRows = (start) => {
       const fragment = document.createDocumentFragment();
       rows.slice(start, state.displayLimit).forEach(({ kind, item, letter }, offset) => {
@@ -2402,9 +2414,13 @@
   els.search.addEventListener("input", updateSearchResults);
   els.search.addEventListener("focus", syncSearchState);
   els.search.addEventListener("blur", scheduleViewportSync);
-  window.visualViewport?.addEventListener("resize", scheduleViewportSync);
+  function handleSearchViewportResize() {
+    scheduleViewportSync();
+    if (els.search.value.trim()) scrollToSearchLetter();
+  }
+  window.visualViewport?.addEventListener("resize", handleSearchViewportResize);
   window.visualViewport?.addEventListener("scroll", scheduleViewportSync);
-  window.addEventListener("resize", scheduleViewportSync);
+  window.addEventListener("resize", handleSearchViewportResize);
   window.addEventListener("scroll", scheduleViewportSync, { passive: true });
   window.addEventListener("orientationchange", scheduleViewportSync);
   syncMobileViewport();
