@@ -1360,7 +1360,7 @@ body.is-artwork-viewing .player-artwork-close-icon { display: block; }
 .track-favorite:not(.active):not(:active) { color: #bcbcbc !important; }
 .player #now-favorite.active { color: #a54fff !important; }
 
-.track-list.is-recent-albums { padding: 10px 10px 1rem; }
+.track-list.is-recent-albums { padding-inline: 10px; }
 .is-recent-albums .track-rows {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1568,4 +1568,7 @@ html { -webkit-tap-highlight-color: transparent; }
   font: 500 .75rem/1 var(--sans);
 }
 .track-count[hidden] { display: none; }
-.track-list.is-recent-albums .track-count { margin: -5px -10px 5px; }
+.track-list.is-recent-albums .track-count { margin-inline-end: -10px; }
+
+/* Keep the final row clear of the player with the totals bar in the scroll area. */
+.track-list { padding-block-end: calc(1rem + 20px); }
