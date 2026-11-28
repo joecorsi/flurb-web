@@ -1557,3 +1557,16 @@ html { -webkit-tap-highlight-color: transparent; }
 .settings-offline-progress progress { width: 100%; height: .45rem; accent-color: var(--lime); }
 .settings-offline-progress progress::-webkit-progress-bar { border-radius: 4px; background: var(--row-alternate); }
 .settings-offline-progress progress::-webkit-progress-value { border-radius: 4px; background: var(--lime); }
+
+.track-count {
+  display: grid;
+  box-sizing: border-box;
+  height: 20px;
+  place-items: center;
+  margin-inline-start: -10px;
+  color: #a0a0a2;
+  background: #181819;
+  font: 500 .75rem/1 var(--sans);
+}
+.track-count[hidden] { display: none; }
+.track-list.is-recent-albums .track-count { margin: -10px -10px 10px; }

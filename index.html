@@ -11,12 +11,12 @@
   <link rel="preconnect" href="https://content.dropboxapi.com" crossorigin>
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=1">
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=1">
-  <link rel="stylesheet" href="./styles.css?v=offline-audio-1">
+  <link rel="stylesheet" href="./styles.css?v=view-scroll-1">
   <script src="./turso-sync.js?v=turso-details-1" defer></script>
   <script src="./artwork-cache.js?v=2" defer></script>
   <script src="./playback-queue.js?v=2" defer></script>
   <script src="./offline-audio.js?v=1" defer></script>
-  <script src="./app.js?v=recent-count-1" defer></script>
+  <script src="./app.js?v=view-scroll-1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -44,9 +44,9 @@
           </div>
         </div>
         <h2 class="sr-only" id="library-heading">Music library</h2>
-        <span class="track-count sr-only" id="track-count"></span>
         <div class="notice" id="notice" role="status" aria-live="polite"><i class="notice-mark" data-lucide="sparkles" aria-hidden="true"></i><span id="notice-message"></span></div>
         <div class="track-list" id="track-list" aria-label="Music library">
+          <div class="track-count" id="track-count" hidden></div>
           <div class="track-rows" id="table-body" role="list"></div>
           <div class="empty-state" id="empty-state"><div class="empty-glyph" aria-hidden="true"><i id="empty-icon" data-lucide="disc-3"></i></div><p>No tracks</p><span></span><a class="empty-settings" id="settings-link" href="./settings.html">Open Settings</a></div>
         </div>
@@ -85,7 +85,7 @@
       <button class="settings-scrim" type="button" aria-label="Close settings" data-close-settings></button>
       <section class="settings-dialog" role="dialog" aria-modal="true" aria-label="Flurb settings">
         <header class="settings-dialog-header"><strong>Settings</strong><button class="icon-button settings-close" id="settings-close" type="button" aria-label="Close settings"><i data-lucide="x" aria-hidden="true"></i></button></header>
-        <iframe class="settings-frame" id="settings-frame" data-src="./settings.html?embedded=1&v=offline-audio-1" title="Flurb settings"></iframe>
+        <iframe class="settings-frame" id="settings-frame" data-src="./settings.html?embedded=1&v=view-scroll-1" title="Flurb settings"></iframe>
       </section>
     </div>
     <dialog class="playlist-picker" id="playlist-picker" aria-labelledby="playlist-picker-title">

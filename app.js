@@ -325,6 +325,7 @@
     loadLibraryFolder();
   }
   function captureView() {
+    saveViewScroll();
     return {
       view: state.viewMode,
       path: state.folderPath,
@@ -337,6 +338,7 @@
     };
   }
   function restoreView(view) {
+    saveViewScroll();
     state.viewMode = view.view;
     state.folderPath = state.catalogFolders.has(view.path) ? view.path : CATALOG_ROOT;
     state.folderHistory = view.view === "library" ? folderAncestors(state.folderPath) : [];
@@ -347,10 +349,10 @@
     els.search.value = view.query;
     localStorage.setItem("flurb.dropbox.actionView", view.view);
     syncSearchState();
-    refreshCatalogView(false);
-    catalogScroller().scrollTo({ top: view.top, behavior: "instant" });
+    refreshCatalogView(false, Number.isFinite(view.top) ? { top: view.top, limit: view.limit } : null);
   }
   function installHistoryNavigation() {
+    history.scrollRestoration = "manual";
     history.replaceState({ flurbRootGuard: true }, "", location.href);
     history.pushState({ flurbRootGuard: true }, "", location.href);
     window.addEventListener("popstate", (event) => {
@@ -431,6 +433,7 @@
     els.home.setAttribute("aria-label", els.home.title);
   }
   function setViewMode(view) {
+    saveViewScroll();
     if (view !== state.viewMode || state.activePlaylistId) {
       els.search.value = "";
       state.searchScroll = null;
@@ -444,7 +447,6 @@
     localStorage.setItem("flurb.dropbox.actionView", view);
     els.viewMenu.hidden = true;
     els.viewButton.setAttribute("aria-expanded", "false");
-    state.displayLimit = 100;
     history.replaceState({ flurbRootGuard: true }, "", location.href);
     loadLibraryFolder();
   }
@@ -515,15 +517,32 @@
       renderLucideIcons(host);
     }
   }
+  function restoreSettingsScroll() {
+    const frame = $("#settings-frame");
+    const saved = Number(localStorage.getItem("flurb.settingsScroll"));
+    if (saved > 0) frame.contentWindow.scrollTo({ top: saved, behavior: "instant" });
+  }
+  function saveSettingsScroll() {
+    if (els.settingsOverlay.hidden) return;
+    const frame = $("#settings-frame");
+    if (frame.contentDocument?.querySelector(".settings-shell")) {
+      localStorage.setItem("flurb.settingsScroll", String(frame.contentWindow.scrollY));
+    }
+  }
   function openSettings() {
     const frame = $("#settings-frame");
-    if (!frame.hasAttribute("src")) frame.src = frame.dataset.src;
+    if (!frame.hasAttribute("src")) {
+      frame.addEventListener("load", restoreSettingsScroll, { once: true });
+      frame.src = frame.dataset.src;
+    }
     els.settingsOverlay.hidden = false;
+    restoreSettingsScroll();
     els.settingsClose.focus();
     sendCloudStatus();
     sendOfflineStatus();
   }
   function closeSettings() {
+    saveSettingsScroll();
     els.settingsOverlay.hidden = true;
     els.settingsButton.focus();
   }
@@ -1098,6 +1117,7 @@
     if (config !== state.cloud || snapshot.generation <= (state.cloudSnapshot?.generation ?? -1)) return;
     const scroll = catalogScroller();
     const offset = scroll.scrollTop;
+    const previousScrollKey = activeScrollKey;
     const updatedArtworkInventory = state.cloudSnapshot &&
       snapshot.artworkInventory !== state.cloudSnapshot.artworkInventory;
     state.cloudSnapshot = snapshot;
@@ -1149,7 +1169,7 @@
     configureOfflineAudio();
     prepareNextTrack();
     refreshCatalogView(false);
-    scroll.scrollTo({ top: offset, behavior: "instant" });
+    if (previousScrollKey && previousScrollKey === activeScrollKey) scroll.scrollTo({ top: offset, behavior: "instant" });
     for (const track of artworkUpdates) queueTrackArtwork(track, false, true);
     if (updatedArtworkInventory) {
       state.artworkCheckedAt.clear();
@@ -1169,7 +1189,13 @@
     return folders;
   }
 
-  function refreshCatalogView(scrollSearch = true) {
+  function refreshCatalogView(scrollSearch = true, position = null) {
+    const key = scrollViewKey();
+    const change = key !== activeScrollKey;
+    activeScrollKey = key;
+    const saved = position || (change && key ? readViewScroll(key) || { top: 0, limit: 100 } : null);
+    if (saved) state.displayLimit = saved.limit;
+
     const folder = state.catalogFolders.get(state.folderPath);
     state.folderName = folder?.name || "Library";
     state.entries = state.viewMode === "library" ? folder?.folders || [] : [];
@@ -1177,18 +1203,19 @@
     updateConnection();
     updateFavoriteButton();
     renderBreadcrumbs();
-    renderTracks(scrollSearch);
+    renderTracks(scrollSearch && !saved);
+    if (saved) catalogScroller().scrollTo({ top: saved.top, behavior: "instant" });
     schedulePlaybackWarmup();
   }
 
   function loadLibraryFolder(path = CATALOG_ROOT) {
+    saveViewScroll();
     if (path !== state.folderPath) {
       els.search.value = "";
       state.searchScroll = null;
       syncSearchState();
     }
     state.folderPath = path;
-    state.displayLimit = 100;
     refreshCatalogView();
   }
 
@@ -1261,6 +1288,7 @@
       syncCloud();
       return;
     }
+    saveViewScroll();
     state.cloud = config;
     state.cloudSnapshot = null;
     state.recentAlbumCache = null;
@@ -1402,6 +1430,39 @@
   function catalogScroller() {
     return window.matchMedia("(max-width: 699px)").matches ? els.trackList : document.scrollingElement;
   }
+  let activeScrollKey = null;
+  let saveScrollTimer;
+  function scrollViewKey() {
+    if (!state.cloudSnapshot) return null;
+    const { origin, id } = state.cloud;
+    return "flurb.viewScroll:" + JSON.stringify([origin, id, state.viewMode, state.folderPath, state.activePlaylistId]);
+  }
+  function readViewScroll(key) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(key));
+      if (Number.isFinite(saved?.top) && saved.top >= 0 && Number.isSafeInteger(saved.limit) && saved.limit >= 100) return saved;
+    } catch (_) {}
+    return null;
+  }
+  function saveViewScroll() {
+    clearTimeout(saveScrollTimer);
+    if (!activeScrollKey || activeScrollKey !== scrollViewKey()) return;
+    const saved = state.searchScroll || { top: catalogScroller().scrollTop, limit: state.displayLimit };
+    try { localStorage.setItem(activeScrollKey, JSON.stringify(saved)); } catch (_) {}
+  }
+  function scheduleViewScrollSave(event) {
+    const scroller = catalogScroller();
+    if (event.target !== scroller && !(event.target === document && scroller === document.scrollingElement)) return;
+    clearTimeout(saveScrollTimer);
+    saveScrollTimer = setTimeout(saveViewScroll, 180);
+  }
+  window.addEventListener("scroll", scheduleViewScrollSave, { passive: true });
+  els.trackList.addEventListener("scroll", scheduleViewScrollSave, { passive: true });
+  window.addEventListener("pagehide", () => {
+    saveViewScroll();
+    saveSettingsScroll();
+  });
+
   function openRecentAlbum(album) {
     state.recentGridReturn = {
       top: catalogScroller().scrollTop,
@@ -1411,9 +1472,9 @@
     };
     history.pushState({ flurbFolder: album.path }, "", location.href);
     loadLibraryFolder(album.path);
-    catalogScroller().scrollTo({ top: 0, behavior: "instant" });
   }
   function returnToRecentGrid() {
+    saveViewScroll();
     const previous = state.recentGridReturn;
     state.recentGridReturn = null;
     state.folderPath = CATALOG_ROOT;
@@ -1421,8 +1482,7 @@
     els.search.value = previous?.query ?? "";
     state.searchScroll = previous?.searchScroll ?? null;
     syncSearchState();
-    refreshCatalogView(false);
-    catalogScroller().scrollTo({ top: previous?.top ?? 0, behavior: "instant" });
+    refreshCatalogView(false, previous);
   }
   function knownAlbumName(track) {
     const album = track.album?.trim();
@@ -1558,8 +1618,31 @@
       .sort((a, b) => a.name.localeCompare(b.name));
     return groupRowsByLetter(playlists.map((item) => ({ kind: "playlist", item })), false);
   }
+  let viewTotals;
+  function updateViewTotals() {
+    els.trackCount.hidden = !state.cloudSnapshot;
+    if (!state.cloudSnapshot) return;
+    const context = playbackContext();
+    const cutoff = state.viewMode === "recent" ? recentCutoff() : null;
+    if (viewTotals?.snapshot !== state.cloudSnapshot || viewTotals.context !== context || viewTotals.cutoff !== cutoff) {
+      const tracks = state.viewMode === "library" && state.folderPath === CATALOG_ROOT && !els.search.value.trim()
+        ? state.catalog.values() : contextTracks();
+      let count = 0;
+      let seconds = 0;
+      for (const track of tracks) {
+        count += 1;
+        const duration = Number(track.duration);
+        if (Number.isFinite(duration) && duration > 0) seconds += duration;
+      }
+      const minutes = Math.floor(seconds / 60);
+      const time = minutes >= 60 ? `${Math.floor(minutes / 60)} hr ${minutes % 60} min` : `${minutes} min`;
+      viewTotals = { snapshot: state.cloudSnapshot, context, cutoff, text: `${count} ${count === 1 ? "track" : "tracks"} · ${time}` };
+    }
+    els.trackCount.textContent = viewTotals.text;
+  }
   function renderTracks(scrollSearch = true) {
     updateTransport();
+    updateViewTotals();
     setLibraryLoading(false);
     state.listObserver?.disconnect();
     state.artworkObserver?.disconnect();
@@ -1581,7 +1664,6 @@
     if (showAlbumGrid) {
       const albums = recentAlbums(query);
       requestAnimationFrame(pumpArtworkQueue);
-      els.trackCount.textContent = `· ${albums.length} album${albums.length === 1 ? "" : "s"}`;
       if (!albums.length) {
         els.emptyState.hidden = false;
         els.emptyState.querySelector("p").textContent = query ? "No results" : "No albums";
@@ -1596,7 +1678,6 @@
     }
     const tracks = filteredTracks();
     const folders = state.entries.filter((folder) => !query || folder.name.toLocaleLowerCase().includes(query));
-    els.trackCount.textContent = `· ${tracks.length} track${tracks.length === 1 ? "" : "s"} · ${folders.length} folder${folders.length === 1 ? "" : "s"}`;
     const atViewRoot = state.viewMode === "playlists"
       ? !state.activePlaylistId
       : state.folderPath === CATALOG_ROOT;
@@ -1610,7 +1691,6 @@
         if (kind === "letter") els.tableBody.append(makeLibraryLetterRow(letter));
         else els.tableBody.append(makePlaylistRow(item));
       });
-      els.trackCount.textContent = `· ${state.playlists.length} playlist${state.playlists.length === 1 ? "" : "s"}`;
       if (!state.playlists.length) { els.emptyState.hidden = false; els.emptyState.querySelector("p").textContent = "No playlists"; }
       if (scrollSearch && query) scrollToSearchLetter();
       return;
@@ -1675,6 +1755,7 @@
   }
   function selectPlaylistView(id) {
     if (id === state.activePlaylistId) return;
+    saveViewScroll();
     state.activePlaylistId = id;
     state.displayLimit = 100;
     els.search.value = "";
@@ -1758,7 +1839,7 @@
     const origin = captureView();
     const path = compilationAlbumPath(catalogTrack) || albumPath(catalogTrack);
     history.replaceState({ ...history.state, flurbView: origin }, "", location.href);
-    restoreView({ view: "library", path, playlistId: null, recentGridReturn: null, query: "", searchScroll: null, limit: 100, top: 0 });
+    restoreView({ view: "library", path, playlistId: null, recentGridReturn: null, query: "", searchScroll: null, limit: 100 });
     history.pushState({ flurbView: captureView() }, "", location.href);
   }
   function makeFolderRow(folder, index = 0) {

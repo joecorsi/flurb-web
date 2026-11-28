@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE = "flurb-shell-v25";
+const CACHE = "flurb-shell-v26";
 const FILES = ["./index.html", "./settings.html", "./app.js", "./settings.js", "./turso-sync.js", "./artwork-cache.js", "./offline-audio.js", "./playback-queue.js", "./styles.css", "./favicon.png", "./apple-touch-icon.png"];
 const scope = new URL(self.registration.scope);
 const paths = new Set(FILES.map((file) => new URL(file, scope).pathname));
